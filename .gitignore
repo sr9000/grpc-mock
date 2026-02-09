@@ -1,0 +1,41 @@
+# Binaries for programs and plugins
+/bin/
+/build/
+/out/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Output of the go coverage tool
+coverage.out
+
+# Go workspace and module files
+go.work
+
+# Dependency directories (uncomment if you vendor dependencies)
+# /vendor/
+
+# IDEs
+.idea/
+*.iml
+workspace.xml
+tasks.xml
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+/internal/genproto/*
+/internal/stubs/*
+/protos/*
+
+!/internal/genproto/echo
+!/internal/stubs/echo
+!/protos/echo
