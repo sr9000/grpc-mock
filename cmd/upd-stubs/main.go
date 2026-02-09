@@ -9,7 +9,6 @@ import (
 	"go/token"
 	"go/types"
 	"log"
-	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -158,23 +157,11 @@ func generateStubFile(outDir, pkgName string, svc serviceInfo) error {
 		return updateStubFile(outPath, structName, svc)
 	}
 
-	// Derive alias for import using genprotoPackageAlias
-	importAlias := genprotoPackageAlias(svc.PkgPath)
-	if importAlias == "" {
-		panic("non-genproto packages are not supported yet")
-	}
+	// Create shared imports map for the entire file
+	// This ensures consistent aliasing across all methods
+	imports := newFileImports(svc.PkgPath)
 
-	// Collect imports needed
-	imports := map[string]string{
-		"google.golang.org/grpc": "",
-		svc.PkgPath:              importAlias,
-		"log":                    "",
-	}
-
-	// Check if we need context (we always do for methods)
-	needsContext := false
-
-	// Collect method implementations
+	// Collect method implementations using shared imports
 	var methods []string
 	iface := svc.Iface
 	for i := 0; i < iface.NumMethods(); i++ {
@@ -184,18 +171,12 @@ func generateStubFile(outDir, pkgName string, svc serviceInfo) error {
 		}
 		sig := m.Type().(*types.Signature)
 
-		// Build method signature
-		methodCode, methodImports := generateMethod(structName, m.Name(), sig, imports)
+		methodCode := generateMethod(structName, m.Name(), sig, imports)
 		methods = append(methods, methodCode)
-		for imp, alias := range methodImports {
-			imports[imp] = alias
-			if imp == "context" {
-				needsContext = true
-			}
-		}
 	}
 
-	_ = needsContext
+	// Get the pb alias for use in struct/constructor
+	pbAlias := imports[svc.PkgPath]
 
 	// Write file header
 	fmt.Fprintf(&buf, "package %s\n\n", pkgName)
@@ -218,18 +199,18 @@ func generateStubFile(outDir, pkgName string, svc serviceInfo) error {
 	fmt.Fprintf(&buf, ")\n\n")
 
 	// Write interface compliance check
-	fmt.Fprintf(&buf, "var _ %s.%s = (*%s)(nil)\n\n", importAlias, svc.InterfaceName, structName)
+	fmt.Fprintf(&buf, "var _ %s.%s = (*%s)(nil)\n\n", pbAlias, svc.InterfaceName, structName)
 
 	// Write struct
 	fmt.Fprintf(&buf, "type %s struct {\n", structName)
-	fmt.Fprintf(&buf, "\t%s.%s\n", importAlias, svc.Unimplemented)
+	fmt.Fprintf(&buf, "\t%s.%s\n", pbAlias, svc.Unimplemented)
 	fmt.Fprintf(&buf, "\tEnableLogging bool\n")
 	fmt.Fprintf(&buf, "}\n\n")
 
 	// Write constructor
 	fmt.Fprintf(&buf, "func New%s(server grpc.ServiceRegistrar, enableLogging bool) *%s {\n", structName, structName)
 	fmt.Fprintf(&buf, "\ts := &%s{EnableLogging: enableLogging}\n", structName)
-	fmt.Fprintf(&buf, "\t%s.%s(server, s)\n", importAlias, svc.RegisterFunc)
+	fmt.Fprintf(&buf, "\t%s.%s(server, s)\n", pbAlias, svc.RegisterFunc)
 	fmt.Fprintf(&buf, "\treturn s\n")
 	fmt.Fprintf(&buf, "}\n")
 
@@ -249,14 +230,27 @@ func generateStubFile(outDir, pkgName string, svc serviceInfo) error {
 	return os.WriteFile(outPath, src, 0o644)
 }
 
-func generateMethod(structName, methodName string, sig *types.Signature, initImports map[string]string) (string, map[string]string) {
-	stubImports := make(map[string]string)
-	stubImports["context"] = ""
-	stubImports["log"] = ""
-	stubImports["grpc-mock/pkg/ctxkeys"] = ""
+// newFileImports creates a shared imports map for generating a stub file.
+// It pre-populates common imports and the genproto package with proper alias.
+func newFileImports(genprotoPkgPath string) map[string]string {
+	imports := map[string]string{
+		"context":                "",
+		"log":                    "",
+		"google.golang.org/grpc": "",
+		"grpc-mock/pkg/ctxkeys":  "",
+	}
 
-	maps.Copy(stubImports, initImports)
+	// Add genproto package with proper alias
+	alias := genprotoPackageAlias(genprotoPkgPath)
+	if alias == "" {
+		panic("non-genproto packages are not supported yet")
+	}
+	imports[genprotoPkgPath] = alias
 
+	return imports
+}
+
+func generateMethod(structName, methodName string, sig *types.Signature, imports map[string]string) string {
 	var buf bytes.Buffer
 
 	// Signature: func (s *StructName) MethodName(ctx context.Context, req *pb.Request) (*pb.Response, error)
@@ -288,7 +282,7 @@ func generateMethod(structName, methodName string, sig *types.Signature, initImp
 			logParamNames = append(logParamNames, pName)
 		}
 
-		pType := formatType(p.Type(), stubImports)
+		pType := formatType(p.Type(), imports)
 		paramList = append(paramList, fmt.Sprintf("%s %s", pName, pType))
 	}
 	fmt.Fprintf(&buf, "%s)", strings.Join(paramList, ", "))
@@ -298,7 +292,7 @@ func generateMethod(structName, methodName string, sig *types.Signature, initImp
 		var resultList []string
 		for i := 0; i < results.Len(); i++ {
 			r := results.At(i)
-			rType := formatType(r.Type(), stubImports)
+			rType := formatType(r.Type(), imports)
 			resultList = append(resultList, rType)
 		}
 		if results.Len() == 1 {
@@ -338,14 +332,14 @@ func generateMethod(structName, methodName string, sig *types.Signature, initImp
 		var zeros []string
 		for i := 0; i < results.Len(); i++ {
 			r := results.At(i)
-			zeros = append(zeros, zeroValue(r.Type(), stubImports))
+			zeros = append(zeros, zeroValue(r.Type(), imports))
 		}
 		fmt.Fprintf(&buf, "\treturn %s\n", strings.Join(zeros, ", "))
 	}
 
 	fmt.Fprintf(&buf, "}")
 
-	return buf.String(), stubImports
+	return buf.String()
 }
 
 func formatType(t types.Type, imports map[string]string) string {
@@ -687,12 +681,13 @@ func updateStubFile(path, structName string, svc serviceInfo) error {
 		// Use genprotoPackageAlias for consistent alias derivation
 		pbAlias = genprotoPackageAlias(svc.PkgPath)
 		if pbAlias == "" {
-			// Fallback for non-genproto packages
-			pbAlias = svc.PkgName + "pb"
-			if strings.HasSuffix(svc.PkgName, "pb") {
-				pbAlias = svc.PkgName
-			}
+			panic("non-genproto packages are not supported yet")
 		}
+	}
+
+	// Create shared imports map for new methods (ensures consistent aliasing)
+	fileImports := map[string]string{
+		svc.PkgPath: pbAlias,
 	}
 
 	type replacement struct {
@@ -711,11 +706,11 @@ func updateStubFile(path, structName string, svc serviceInfo) error {
 		sig := m.Type().(*types.Signature)
 
 		if existingFn, ok := existingMethods[m.Name()]; ok {
-			if signaturesMatch(existingFn, sig, svc.PkgPath, pbAlias, fset) {
+			if signaturesMatch(existingFn, sig, fileImports, fset) {
 				continue
 			}
 			log.Printf("Method %s signature mismatch, fixing...", m.Name())
-			newMethod := generateMethodWithExistingBody(structName, m.Name(), sig, svc.PkgPath, pbAlias, existingFn, src, fset)
+			newMethod := generateMethodWithExistingBody(structName, m.Name(), sig, fileImports, existingFn, src, fset)
 			replacements = append(replacements, replacement{
 				start:   fset.Position(existingFn.Pos()).Offset,
 				end:     fset.Position(existingFn.End()).Offset,
@@ -724,7 +719,7 @@ func updateStubFile(path, structName string, svc serviceInfo) error {
 			continue
 		}
 
-		code, _ := generateMethod(structName, m.Name(), sig, map[string]string{svc.PkgPath: pbAlias})
+		code := generateMethod(structName, m.Name(), sig, fileImports)
 		newMethods = append(newMethods, code)
 	}
 
@@ -875,7 +870,7 @@ func isReceiver(expr ast.Expr, structName string) bool {
 	}
 }
 
-func signaturesMatch(fn *ast.FuncDecl, sig *types.Signature, pkgPath, pbAlias string, fset *token.FileSet) bool {
+func signaturesMatch(fn *ast.FuncDecl, sig *types.Signature, imports map[string]string, fset *token.FileSet) bool {
 	params := fn.Type.Params.List
 	expectedParams := sig.Params()
 
@@ -895,12 +890,9 @@ func signaturesMatch(fn *ast.FuncDecl, sig *types.Signature, pkgPath, pbAlias st
 		return false
 	}
 
-	// Initialize imports with the pb alias to ensure consistent type formatting
-	importsMap := map[string]string{
-		pkgPath: pbAlias,
-	}
+	// Use provided imports map for consistent type formatting
 	for i := 0; i < expectedParams.Len(); i++ {
-		expectedType := formatType(expectedParams.At(i).Type(), importsMap)
+		expectedType := formatType(expectedParams.At(i).Type(), imports)
 		if removeWhitespace(expectedType) != removeWhitespace(astParamTypes[i]) {
 			return false
 		}
@@ -927,7 +919,7 @@ func signaturesMatch(fn *ast.FuncDecl, sig *types.Signature, pkgPath, pbAlias st
 	}
 
 	for i := 0; i < expectedResults.Len(); i++ {
-		expectedType := formatType(expectedResults.At(i).Type(), importsMap)
+		expectedType := formatType(expectedResults.At(i).Type(), imports)
 		if removeWhitespace(expectedType) != removeWhitespace(astResultTypes[i]) {
 			return false
 		}
@@ -936,7 +928,7 @@ func signaturesMatch(fn *ast.FuncDecl, sig *types.Signature, pkgPath, pbAlias st
 	return true
 }
 
-func generateMethodWithExistingBody(structName, methodName string, sig *types.Signature, pkgPath, pbAlias string, existingFn *ast.FuncDecl, src []byte, fset *token.FileSet) string {
+func generateMethodWithExistingBody(structName, methodName string, sig *types.Signature, imports map[string]string, existingFn *ast.FuncDecl, src []byte, fset *token.FileSet) string {
 	// Capture previous signature
 	startOffset := fset.Position(existingFn.Pos()).Offset
 	bodyStartOffset := fset.Position(existingFn.Body.Pos()).Offset
@@ -968,17 +960,13 @@ func generateMethodWithExistingBody(structName, methodName string, sig *types.Si
 		}
 	}
 
-	// Determine new parameter names
+	// Determine new parameter names by matching types
 	paramNames := make([]string, sig.Params().Len())
-	// Initialize imports map with the pb alias to ensure consistent type formatting
-	dummyImports := map[string]string{
-		pkgPath: pbAlias,
-	}
 
 	params := sig.Params()
 	for i := 0; i < params.Len(); i++ {
 		newParamType := params.At(i).Type()
-		newParamTypeStr := removeWhitespace(formatType(newParamType, dummyImports))
+		newParamTypeStr := removeWhitespace(formatType(newParamType, imports))
 
 		// Find match
 		for _, ep := range existingParams {
@@ -993,10 +981,6 @@ func generateMethodWithExistingBody(structName, methodName string, sig *types.Si
 	}
 
 	var buf bytes.Buffer
-	// Initialize imports map with the pb alias to ensure consistent type formatting
-	imports := map[string]string{
-		pkgPath: pbAlias,
-	}
 
 	fmt.Fprintf(&buf, "// Previous signature: %s\n", prevSig)
 	fmt.Fprintf(&buf, "func (s *%s) %s(", structName, methodName)
