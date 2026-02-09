@@ -7,14 +7,17 @@ import (
 	"github.com/google/wire"
 	"google.golang.org/grpc"
 
+	complexservicestub "grpc-mock/internal/stubs/complex/service"
 	echostub "grpc-mock/internal/stubs/echo"
 )
 
 type App struct {
-	Echo *echostub.EchoServer
+	ComplexserviceComplex *complexservicestub.ComplexServer
+	Echo                  *echostub.EchoServer
 }
 
 var ProviderSet = wire.NewSet(
+	complexservicestub.NewComplexServer,
 	echostub.NewEchoServer,
 	wire.Struct(new(App), "*"),
 )

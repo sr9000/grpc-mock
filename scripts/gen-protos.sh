@@ -42,8 +42,8 @@ mkdir -p "$OUT_DIR"
 for dir in "${folders[@]}"; do
   rel_path="${dir#"$PROTO_DIR"/}"
   mkdir -p "$OUT_DIR/$rel_path"
-  files=$(find "$dir" -name "*.proto" -print)
-  if [ -z "$files" ]; then
+  mapfile -t files < <(find "$dir" -name "*.proto")
+  if [ ${#files[@]} -eq 0 ]; then
     echo "skip $rel_path (no proto files)"
     continue
   fi
@@ -54,6 +54,6 @@ for dir in "${folders[@]}"; do
     -I "$GOOGLEAPIS_DIR" \
     --go_out="$OUT_DIR" --go_opt=paths=source_relative \
     --go-grpc_out="$OUT_DIR" --go-grpc_opt=paths=source_relative \
-    "$files"
+    "${files[@]}"
   echo "done $rel_path"
 done

@@ -9,15 +9,18 @@ package app
 import (
 	"github.com/google/wire"
 	"google.golang.org/grpc"
+	"grpc-mock/internal/stubs/complex/service"
 	"grpc-mock/internal/stubs/echo"
 )
 
 // Injectors from wire.go:
 
 func InitializeApp(server grpc.ServiceRegistrar, enableLogging bool) (*App, error) {
+	complexServer := service.NewComplexServer(server, enableLogging)
 	echoServer := echo.NewEchoServer(server, enableLogging)
 	app := &App{
-		Echo: echoServer,
+		ComplexserviceComplex: complexServer,
+		Echo:                  echoServer,
 	}
 	return app, nil
 }
@@ -25,7 +28,8 @@ func InitializeApp(server grpc.ServiceRegistrar, enableLogging bool) (*App, erro
 // wire.go:
 
 type App struct {
-	Echo *echo.EchoServer
+	ComplexserviceComplex *service.ComplexServer
+	Echo                  *echo.EchoServer
 }
 
-var ProviderSet = wire.NewSet(echo.NewEchoServer, wire.Struct(new(App), "*"))
+var ProviderSet = wire.NewSet(service.NewComplexServer, echo.NewEchoServer, wire.Struct(new(App), "*"))
