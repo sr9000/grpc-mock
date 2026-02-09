@@ -1,0 +1,22 @@
+services:
+  grpc-mock:
+    build:
+      context: .
+      target: dev  # Targeted specifically for the 'dev' stage
+    volumes:
+      # Mount the current directory to /app in the container.
+      # This enables bi-directional sync:
+      # 1. You edit files on host -> Container sees them -> Air rebuilds.
+      # 2. Container generates .pb.go files -> Host sees them -> IDE works.
+      - .:/app
+      # Mount go module cache to prevent re-downloading dependencies
+      - gomod-cache:/go/pkg/mod
+    ports:
+      - "50051:50051"
+    environment:
+      - HOST=0.0.0.0
+      - GRPC_REFLECTION=true
+      - GRPC_LOGGING=true
+
+volumes:
+  gomod-cache:

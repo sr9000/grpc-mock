@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+option go_package = "grpc-mock/internal/genproto/echo;echo";
+
+// Define the Echo Service
+service EchoService {
+  // Define a simple RPC method that takes an EchoRequest and returns an EchoResponse
+  rpc Echo(EchoRequest) returns (EchoResponse);
+}
+
+// Define the request message
+message EchoRequest {
+  string message = 1;
+}
+
+// Define the response message
+message EchoResponse {
+  string message = 1;
+}

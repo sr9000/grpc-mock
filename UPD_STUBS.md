@@ -1,0 +1,187 @@
+# upd-stubs: Генератор gRPC-заглушек
+
+`upd-stubs` — это консольная утилита (CLI) для автоматизации создания и сопровождения реализаций gRPC-mock серверов на
+языке Go. Инструмент сканирует сгенерированный Protobuf-код, формирует типобезопасные заглушки, настраивает внедрение
+зависимостей (Dependency Injection) и выполняет «умное» обновление существующих файлов, сохраняя ранее написанную
+бизнес-логику.
+
+## Ключевые возможности
+
+### 1. Автоматическая генерация заглушек
+
+* **Анализ Proto-кода:** Рекурсивно сканирует Go-пакеты в директории `internal/genproto` для поиска интерфейсов
+  gRPC-сервисов.
+* **Распознавание интерфейсов:** Автоматически выявляет типы, оканчивающиеся на `Server` (исключая вспомогательные
+  `Unimplemented` и `Unsafe`), а также соответствующие функции регистрации (`Register...`).
+* **Формирование структуры:** Генерирует файлы реализации в директории `internal/stubs`, зеркально повторяя структуру
+  пакетов исходных proto-файлов.
+
+### 2. Интеллектуальное (безопасное) обновление
+
+В отличие от стандартных генераторов, которые часто просто перезаписывают файлы, `upd-stubs` анализирует абстрактное
+синтаксическое дерево (AST) существующего кода, чтобы сохранить ваш ручной труд:
+
+* **Синхронизация сигнатур:** При изменении контракта в `.proto` файле, инструмент обновляет сигнатуру метода в Go (типы
+  параметров и возвращаемых значений), **сохраняя при этом тело функции** нетронутым.
+* **Сохранение имен аргументов (Best-effort):** Генератор следует принципу *best-effort* — он сохранит столько
+  существующих имен аргументов, сколько сможет. Алгоритм пытается сопоставить старые аргументы с новыми. Если типы
+  совпадают, ваши имена переменных (например, `customReq`) останутся. Если же сигнатура изменилась слишком сильно,
+  генератор может откатиться к стандартным именам (например, `arg1`, `arg2` и так далее), чтобы гарантировать
+  уникальность имён.
+* **История изменений:** При обновлении сигнатуры над методом добавляется комментарий с его предыдущей версией для
+  удобства сравнения.
+* **Добавление методов:** Автоматически обнаруживает новые RPC-методы, появившиеся в протоколе, и добавляет их заготовки
+  в код, если они отсутствуют.
+* **Сохранение методов:** *Лишние* методы останутся нетронутыми, что позволит сохранить реализацию заглушки в случае
+  переименования метода в оригинальном `.proto` файле.
+* **Управление импортами:** Автоматически добавляет необходимые зависимости и псевдонимы пакетов (например,
+  `pkgnamepb`), а также удаляет неиспользуемые импорты (аналог `goimports`).
+
+### 3. Качественная кодогенерация
+
+Создаваемый код соответствует минимальным стандартам качества и содержит необходимую обвязку:
+
+* **Структура сервисов:** Генерирует структуры, встраивающие `Unimplemented...Server`, что обеспечивает прямую
+  совместимость с будущими версиями API.
+* **Конструкторы:** Создает функции `New<Service>Server`, которые:
+    * Принимают `grpc.ServiceRegistrar` и сразу регистрируют сервер.
+    * Принимают флаг конфигурации `enableLogging`.
+* **Корректные возвращаемые значения:** Новые методы сразу возвращают валидные «нулевые» значения (например, `nil`, `0`,
+  `""` или указатели на пустые структуры), благодаря чему код компилируется без ошибок сразу после генерации.
+
+### 4. Логирование и работа с контекстом
+
+* **Контекст запроса:** Все сгенерированные методы принимают `context.Context` и умеют извлекать `reqID` (Request ID),
+  используя ключ из пакета `grpc-mock/pkg/ctxkeys`.
+* **Управляемое логирование:** Структура сервиса содержит поле `EnableLogging`.
+    * Если опция включена, в лог автоматически пишется имя метода, идентификатор запроса и входящие данные.
+
+### 5. Интеграция с Google Wire
+
+* **Автоматическое связывание:** Генерирует файл `internal/app/wire.go` для настройки dependency injection с помощью
+  [Google Wire](https://github.com/google/wire).
+* **Единая точка входа:** Собирает все сгенерированные заглушки в общую структуру `App`.
+* **Набор провайдеров:** Формирует `wire.NewSet`, включающий конструкторы всех обнаруженных сервисов, что позволяет
+  инициализировать весь мок-сервер одной строкой.
+
+---
+
+## 📂 Структура проекта
+
+Инструмент ориентирован на следующую структуру директорий:
+
+```text
+./internal/
+├── app
+│   ├── wire.go              # Update: Wire file, describes dependency injection
+│   └── wire_gen.go          # Update: Real file used in compilation, produced from wire.go
+├── genproto                 # Input: Generated gRPC code (pb.go files)
+│   └── *                    # Input: Each service in a separate directory (keeps original proto folder structure)
+│       ├── *.pb.go
+│       └── *_grpc.pb.go
+└── stubs                    # Output: Generated implementation stubs
+    └── *                    # Output: Each service in a separate directory (keeps original proto folder structure)
+        └── *_server.go
+```
+
+---
+
+## 🛠 Примеры генерируемого кода
+
+### 1. Файл реализации заглушки
+
+Для сервиса `EchoService` в пакете `echo` инструмент создаст файл `internal/stubs/echo/echo_server.go`:
+
+```go
+package echo
+
+import (
+	"context"
+	"log"
+
+	echopb "project_name/internal/genproto/echo"
+	"google.golang.org/grpc"
+)
+
+// Гарантия соответствия интерфейсу
+var _ echopb.EchoServiceServer = (*EchoServer)(nil)
+
+type EchoServer struct {
+	echopb.UnimplementedEchoServiceServer // Unimplemented-заглушки (если "случайно" забыть их обновить)
+	EnableLogging                         bool
+}
+
+// Конструктор, выполняет авто-регистрацию в gRPC сервере
+func NewEchoServer(server grpc.ServiceRegistrar, enableLogging bool) *EchoServer {
+	s := &EchoServer{EnableLogging: enableLogging}
+	echopb.RegisterEchoServiceServer(server, s)
+	return s
+}
+
+// Реализация метода с поддержкой логирования
+func (s *EchoServer) Echo(ctx context.Context, req *echopb.EchoRequest) (*echopb.EchoResponse, error) {
+	if s.EnableLogging {
+		reqID, _ := ctx.Value(ctxkeys.RequestID{}).(string)
+		log.Printf("[req_id=%s] [EchoServer] stub Echo called with: %+v", reqID, req)
+	}
+	return &echopb.EchoResponse{}, nil
+}
+```
+
+### 2. Файл конфигурации Wire
+
+Генерирует `internal/app/wire.go`:
+
+```go
+//go:build wireinject
+// +build wireinject
+
+package app
+
+import (
+	"github.com/google/wire"
+	"google.golang.org/grpc"
+	echostub "project_name/internal/stubs/echo"
+)
+
+type App struct {
+	Echo *echostub.EchoServer
+}
+
+var ProviderSet = wire.NewSet(
+	echostub.NewEchoServer,
+	wire.Struct(new(App), "*"),
+)
+
+func InitializeApp(server grpc.ServiceRegistrar, enableLogging bool) (*App, error) {
+	wire.Build(ProviderSet)
+	return nil, nil
+}
+```
+
+---
+
+## ⚙️ Принцип работы механизма обновлений
+
+Предположим, вы изменили метод `Echo` в `.proto` файле (например, поменяли тип входящего аргумента). После запуска
+`upd-stubs` произойдет следующее:
+
+**Было (Ваш код с кастомной логикой):**
+
+```go
+func (s *EchoServer) Echo(ctx context.Context, req *echopb.OldReq) (*echopb.Resp, error) {
+return &echopb.Resp{Msg: "Привет"}, nil
+}
+```
+
+**Стало (После работы утилиты):**
+
+```go
+// Previous signature: func (s *EchoServer) Echo(ctx context.Context, req *echopb.OldReq) (*echopb.Resp, error)
+func (s *EchoServer) Echo(ctx context.Context, req *echopb.NewReq) (*echopb.Resp, error) {
+return &echopb.Resp{Msg: "Привет"}, nil
+}
+```
+
+*Важно: Код внутри тела функции остается нетронутым. Вам нужно лишь скорректировать логику под новые типы данных, при
+этом ваши наработки не будут потеряны.*

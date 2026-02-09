@@ -1,0 +1,25 @@
+# .air.proto.toml
+root = "."
+tmp_dir = "tmp_proto"
+
+[build]
+# When protos change, run the generation pipeline
+cmd = "make proto stub wire"
+
+# We do NOT want to run a server here. We just run a dummy command.
+entrypoint = "/bin/true"
+
+# Only watch Proto files
+include_ext = ["proto"]
+
+exclude_dir = ["bin", "tmp", "vendor", ".git"]
+delay = 5000
+
+[log]
+time = true
+main_only = true
+
+[color]
+main = "blue"
+watcher = "blue"
+build = "blue"

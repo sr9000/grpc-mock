@@ -1,0 +1,29 @@
+# .air.go.toml
+root = "."
+tmp_dir = "tmp"
+
+[build]
+# Only build the binary, do not regenerate protos
+cmd = "make build"
+# Run the server
+entrypoint = "./bin/grpc-mock"
+
+# Watch Go files and templates
+include_ext = ["go"]
+
+# CRITICAL: Ignore genproto (it is handled by imports) and temp folders
+exclude_dir = ["internal/genproto", "bin", "tmp", "vendor", ".git"]
+exclude_regex = ["_test.go"]
+
+# Wait a bit for file writes to settle
+delay = 5000
+
+[log]
+time = true
+main_only = true
+
+[color]
+main = "magenta"
+watcher = "cyan"
+build = "yellow"
+runner = "green"
