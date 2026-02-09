@@ -17,7 +17,7 @@ import (
 	"unicode"
 
 	"golang.org/x/tools/go/packages"
-	"golang.org/x/tools/imports"
+	goimports "golang.org/x/tools/imports"
 )
 
 const (
@@ -185,7 +185,7 @@ func generateStubFile(outDir, pkgName string, svc serviceInfo) error {
 		sig := m.Type().(*types.Signature)
 
 		// Build method signature
-		methodCode, methodImports := generateMethod(structName, m.Name(), sig, importAlias, imports)
+		methodCode, methodImports := generateMethod(structName, m.Name(), sig, imports)
 		methods = append(methods, methodCode)
 		for imp, alias := range methodImports {
 			imports[imp] = alias
@@ -249,7 +249,7 @@ func generateStubFile(outDir, pkgName string, svc serviceInfo) error {
 	return os.WriteFile(outPath, src, 0o644)
 }
 
-func generateMethod(structName, methodName string, sig *types.Signature, pbAlias string, initImports map[string]string) (string, map[string]string) {
+func generateMethod(structName, methodName string, sig *types.Signature, initImports map[string]string) (string, map[string]string) {
 	stubImports := make(map[string]string)
 	stubImports["context"] = ""
 	stubImports["log"] = ""
@@ -338,7 +338,7 @@ func generateMethod(structName, methodName string, sig *types.Signature, pbAlias
 		var zeros []string
 		for i := 0; i < results.Len(); i++ {
 			r := results.At(i)
-			zeros = append(zeros, zeroValue(r.Type(), pbAlias, stubImports))
+			zeros = append(zeros, zeroValue(r.Type(), stubImports))
 		}
 		fmt.Fprintf(&buf, "\treturn %s\n", strings.Join(zeros, ", "))
 	}
@@ -358,13 +358,40 @@ func formatType(t types.Type, imports map[string]string) string {
 		}
 		// Check if it's from our pb package
 		pkgPath := pkg.Path()
-		if alias, ok := imports[pkgPath]; ok && alias != "" {
+		if alias, ok := imports[pkgPath]; ok {
+			if alias != "" {
+				return alias + "." + obj.Name()
+			}
+			// Empty alias means use package name
+			return pkg.Name() + "." + obj.Name()
+		}
+		// External package - check if we need an alias to avoid conflicts
+		pkgName := pkg.Name()
+		needsAlias := false
+		for existingPath, existingAlias := range imports {
+			if existingPath == pkgPath {
+				continue
+			}
+			// Check if another import uses this package name
+			usedName := existingAlias
+			if usedName == "" {
+				// Extract package name from path
+				parts := strings.Split(existingPath, "/")
+				usedName = parts[len(parts)-1]
+			}
+			if usedName == pkgName {
+				needsAlias = true
+				break
+			}
+		}
+		if needsAlias {
+			// Generate unique alias from path
+			alias := generateUniqueAlias(pkgPath, imports)
+			imports[pkgPath] = alias
 			return alias + "." + obj.Name()
 		}
-		// External package
-		alias := pkg.Name()
 		imports[pkgPath] = ""
-		return alias + "." + obj.Name()
+		return pkgName + "." + obj.Name()
 	case *types.Pointer:
 		return "*" + formatType(tt.Elem(), imports)
 	case *types.Slice:
@@ -383,7 +410,7 @@ func formatType(t types.Type, imports map[string]string) string {
 	}
 }
 
-func zeroValue(t types.Type, pbAlias string, imports map[string]string) string {
+func zeroValue(t types.Type, imports map[string]string) string {
 	switch tt := t.(type) {
 	case *types.Named:
 		// Check if it's error type
@@ -426,6 +453,35 @@ func toSnakeCase(s string) string {
 		}
 	}
 	return string(result)
+}
+
+// generateUniqueAlias creates a unique import alias from a package path.
+// It combines path segments to avoid conflicts with existing imports.
+func generateUniqueAlias(pkgPath string, imports map[string]string) string {
+	parts := strings.Split(pkgPath, "/")
+	// Start with just the package name and add parent segments if needed
+	for i := len(parts) - 1; i >= 0; i-- {
+		candidate := strings.Join(parts[i:], "")
+		// Clean the candidate - remove dots and dashes
+		candidate = strings.ReplaceAll(candidate, ".", "")
+		candidate = strings.ReplaceAll(candidate, "-", "")
+		// Check if this alias is already used
+		isUsed := false
+		for _, existingAlias := range imports {
+			if existingAlias == candidate {
+				isUsed = true
+				break
+			}
+		}
+		if !isUsed {
+			return candidate
+		}
+	}
+	// Fallback: use entire path with all separators removed
+	alias := strings.ReplaceAll(pkgPath, "/", "")
+	alias = strings.ReplaceAll(alias, ".", "")
+	alias = strings.ReplaceAll(alias, "-", "")
+	return alias
 }
 
 func toPascalCase(s string) string {
@@ -473,10 +529,13 @@ func generateWireFile(pkgMap map[string]*stubPkg) error {
 
 	for _, dir := range sortedDirs {
 		sp := pkgMap[dir]
-		importPath := "grpc-mock/" + sp.OutDir
+		// Import paths always use forward slashes, regardless of OS
+		importPath := "grpc-mock/" + filepath.ToSlash(sp.OutDir)
 
 		rel := strings.TrimPrefix(sp.OutDir, stubsOutDir+string(os.PathSeparator))
-		parts := strings.Split(rel, string(os.PathSeparator))
+		// Use forward slashes for consistent alias generation
+		relSlash := filepath.ToSlash(rel)
+		parts := strings.Split(relSlash, "/")
 		alias := strings.Join(parts, "") + "stub"
 
 		var servers []string
@@ -616,11 +675,11 @@ func updateStubFile(path, structName string, svc serviceInfo) error {
 		sig := m.Type().(*types.Signature)
 
 		if existingFn, ok := existingMethods[m.Name()]; ok {
-			if signaturesMatch(existingFn, sig, pbAlias, fset) {
+			if signaturesMatch(existingFn, sig, svc.PkgPath, pbAlias, fset) {
 				continue
 			}
 			log.Printf("Method %s signature mismatch, fixing...", m.Name())
-			newMethod := generateMethodWithExistingBody(structName, m.Name(), sig, pbAlias, existingFn, src, fset)
+			newMethod := generateMethodWithExistingBody(structName, m.Name(), sig, svc.PkgPath, pbAlias, existingFn, src, fset)
 			replacements = append(replacements, replacement{
 				start:   fset.Position(existingFn.Pos()).Offset,
 				end:     fset.Position(existingFn.End()).Offset,
@@ -629,7 +688,7 @@ func updateStubFile(path, structName string, svc serviceInfo) error {
 			continue
 		}
 
-		code, _ := generateMethod(structName, m.Name(), sig, pbAlias, nil)
+		code, _ := generateMethod(structName, m.Name(), sig, map[string]string{svc.PkgPath: pbAlias})
 		newMethods = append(newMethods, code)
 	}
 
@@ -654,7 +713,7 @@ func updateStubFile(path, structName string, svc serviceInfo) error {
 		buf.WriteString(method)
 	}
 
-	res, err := imports.Process(path, buf.Bytes(), nil)
+	res, err := goimports.Process(path, buf.Bytes(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to process imports: %w", err)
 	}
@@ -780,7 +839,7 @@ func isReceiver(expr ast.Expr, structName string) bool {
 	}
 }
 
-func signaturesMatch(fn *ast.FuncDecl, sig *types.Signature, pbAlias string, fset *token.FileSet) bool {
+func signaturesMatch(fn *ast.FuncDecl, sig *types.Signature, pkgPath, pbAlias string, fset *token.FileSet) bool {
 	params := fn.Type.Params.List
 	expectedParams := sig.Params()
 
@@ -800,9 +859,12 @@ func signaturesMatch(fn *ast.FuncDecl, sig *types.Signature, pbAlias string, fse
 		return false
 	}
 
-	dummyImports := make(map[string]string)
+	// Initialize imports with the pb alias to ensure consistent type formatting
+	importsMap := map[string]string{
+		pkgPath: pbAlias,
+	}
 	for i := 0; i < expectedParams.Len(); i++ {
-		expectedType := formatType(expectedParams.At(i).Type(), dummyImports)
+		expectedType := formatType(expectedParams.At(i).Type(), importsMap)
 		if removeWhitespace(expectedType) != removeWhitespace(astParamTypes[i]) {
 			return false
 		}
@@ -829,7 +891,7 @@ func signaturesMatch(fn *ast.FuncDecl, sig *types.Signature, pbAlias string, fse
 	}
 
 	for i := 0; i < expectedResults.Len(); i++ {
-		expectedType := formatType(expectedResults.At(i).Type(), dummyImports)
+		expectedType := formatType(expectedResults.At(i).Type(), importsMap)
 		if removeWhitespace(expectedType) != removeWhitespace(astResultTypes[i]) {
 			return false
 		}
@@ -838,7 +900,7 @@ func signaturesMatch(fn *ast.FuncDecl, sig *types.Signature, pbAlias string, fse
 	return true
 }
 
-func generateMethodWithExistingBody(structName, methodName string, sig *types.Signature, pbAlias string, existingFn *ast.FuncDecl, src []byte, fset *token.FileSet) string {
+func generateMethodWithExistingBody(structName, methodName string, sig *types.Signature, pkgPath, pbAlias string, existingFn *ast.FuncDecl, src []byte, fset *token.FileSet) string {
 	// Capture previous signature
 	startOffset := fset.Position(existingFn.Pos()).Offset
 	bodyStartOffset := fset.Position(existingFn.Body.Pos()).Offset
@@ -872,7 +934,10 @@ func generateMethodWithExistingBody(structName, methodName string, sig *types.Si
 
 	// Determine new parameter names
 	paramNames := make([]string, sig.Params().Len())
-	dummyImports := make(map[string]string)
+	// Initialize imports map with the pb alias to ensure consistent type formatting
+	dummyImports := map[string]string{
+		pkgPath: pbAlias,
+	}
 
 	params := sig.Params()
 	for i := 0; i < params.Len(); i++ {
@@ -892,7 +957,10 @@ func generateMethodWithExistingBody(structName, methodName string, sig *types.Si
 	}
 
 	var buf bytes.Buffer
-	imports := make(map[string]string)
+	// Initialize imports map with the pb alias to ensure consistent type formatting
+	imports := map[string]string{
+		pkgPath: pbAlias,
+	}
 
 	fmt.Fprintf(&buf, "// Previous signature: %s\n", prevSig)
 	fmt.Fprintf(&buf, "func (s *%s) %s(", structName, methodName)
