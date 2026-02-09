@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROTO_DIR="$ROOT_DIR/protos"
+GOOGLEAPIS_DIR="$ROOT_DIR/googleapis"
 OUT_DIR="$ROOT_DIR/internal/genproto"
 PROTOC_BIN="${PROTOC_BIN:-protoc}"
 
@@ -39,7 +40,7 @@ rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
 for dir in "${folders[@]}"; do
-  rel_path="${dir#$PROTO_DIR/}"
+  rel_path="${dir#"$PROTO_DIR"/}"
   mkdir -p "$OUT_DIR/$rel_path"
   files=$(find "$dir" -name "*.proto" -print)
   if [ -z "$files" ]; then
@@ -50,8 +51,9 @@ for dir in "${folders[@]}"; do
   echo "generating stubs for $rel_path"
   $PROTOC_BIN \
     -I "$PROTO_DIR" \
+    -I "$GOOGLEAPIS_DIR" \
     --go_out="$OUT_DIR" --go_opt=paths=source_relative \
     --go-grpc_out="$OUT_DIR" --go-grpc_opt=paths=source_relative \
-    $files
+    "$files"
   echo "done $rel_path"
 done

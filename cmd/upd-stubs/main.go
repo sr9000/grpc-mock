@@ -9,6 +9,7 @@ import (
 	"go/token"
 	"go/types"
 	"log"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -184,7 +185,7 @@ func generateStubFile(outDir, pkgName string, svc serviceInfo) error {
 		sig := m.Type().(*types.Signature)
 
 		// Build method signature
-		methodCode, methodImports := generateMethod(structName, m.Name(), sig, importAlias)
+		methodCode, methodImports := generateMethod(structName, m.Name(), sig, importAlias, imports)
 		methods = append(methods, methodCode)
 		for imp, alias := range methodImports {
 			imports[imp] = alias
@@ -248,11 +249,13 @@ func generateStubFile(outDir, pkgName string, svc serviceInfo) error {
 	return os.WriteFile(outPath, src, 0o644)
 }
 
-func generateMethod(structName, methodName string, sig *types.Signature, pbAlias string) (string, map[string]string) {
+func generateMethod(structName, methodName string, sig *types.Signature, pbAlias string, initImports map[string]string) (string, map[string]string) {
 	stubImports := make(map[string]string)
 	stubImports["context"] = ""
 	stubImports["log"] = ""
 	stubImports["grpc-mock/pkg/ctxkeys"] = ""
+
+	maps.Copy(stubImports, initImports)
 
 	var buf bytes.Buffer
 
@@ -285,7 +288,7 @@ func generateMethod(structName, methodName string, sig *types.Signature, pbAlias
 			logParamNames = append(logParamNames, pName)
 		}
 
-		pType := formatType(p.Type(), pbAlias, stubImports)
+		pType := formatType(p.Type(), stubImports)
 		paramList = append(paramList, fmt.Sprintf("%s %s", pName, pType))
 	}
 	fmt.Fprintf(&buf, "%s)", strings.Join(paramList, ", "))
@@ -295,7 +298,7 @@ func generateMethod(structName, methodName string, sig *types.Signature, pbAlias
 		var resultList []string
 		for i := 0; i < results.Len(); i++ {
 			r := results.At(i)
-			rType := formatType(r.Type(), pbAlias, stubImports)
+			rType := formatType(r.Type(), stubImports)
 			resultList = append(resultList, rType)
 		}
 		if results.Len() == 1 {
@@ -345,7 +348,7 @@ func generateMethod(structName, methodName string, sig *types.Signature, pbAlias
 	return buf.String(), stubImports
 }
 
-func formatType(t types.Type, pbAlias string, imports map[string]string) string {
+func formatType(t types.Type, imports map[string]string) string {
 	switch tt := t.(type) {
 	case *types.Named:
 		obj := tt.Obj()
@@ -355,19 +358,19 @@ func formatType(t types.Type, pbAlias string, imports map[string]string) string 
 		}
 		// Check if it's from our pb package
 		pkgPath := pkg.Path()
-		if strings.Contains(pkgPath, "genproto") {
-			return pbAlias + "." + obj.Name()
+		if alias, ok := imports[pkgPath]; ok && alias != "" {
+			return alias + "." + obj.Name()
 		}
 		// External package
 		alias := pkg.Name()
 		imports[pkgPath] = ""
 		return alias + "." + obj.Name()
 	case *types.Pointer:
-		return "*" + formatType(tt.Elem(), pbAlias, imports)
+		return "*" + formatType(tt.Elem(), imports)
 	case *types.Slice:
-		return "[]" + formatType(tt.Elem(), pbAlias, imports)
+		return "[]" + formatType(tt.Elem(), imports)
 	case *types.Map:
-		return fmt.Sprintf("map[%s]%s", formatType(tt.Key(), pbAlias, imports), formatType(tt.Elem(), pbAlias, imports))
+		return fmt.Sprintf("map[%s]%s", formatType(tt.Key(), imports), formatType(tt.Elem(), imports))
 	case *types.Interface:
 		if tt.Empty() {
 			return "interface{}"
@@ -387,9 +390,9 @@ func zeroValue(t types.Type, pbAlias string, imports map[string]string) string {
 		if tt.Obj().Name() == "error" && tt.Obj().Pkg() == nil {
 			return "nil"
 		}
-		return "&" + formatType(t, pbAlias, imports) + "{}"
+		return "&" + formatType(t, imports) + "{}"
 	case *types.Pointer:
-		return "&" + formatType(tt.Elem(), pbAlias, imports) + "{}"
+		return "&" + formatType(tt.Elem(), imports) + "{}"
 	case *types.Slice, *types.Map, *types.Chan, *types.Signature, *types.Interface:
 		return "nil"
 	case *types.Basic:
@@ -626,7 +629,7 @@ func updateStubFile(path, structName string, svc serviceInfo) error {
 			continue
 		}
 
-		code, _ := generateMethod(structName, m.Name(), sig, pbAlias)
+		code, _ := generateMethod(structName, m.Name(), sig, pbAlias, nil)
 		newMethods = append(newMethods, code)
 	}
 
@@ -799,7 +802,7 @@ func signaturesMatch(fn *ast.FuncDecl, sig *types.Signature, pbAlias string, fse
 
 	dummyImports := make(map[string]string)
 	for i := 0; i < expectedParams.Len(); i++ {
-		expectedType := formatType(expectedParams.At(i).Type(), pbAlias, dummyImports)
+		expectedType := formatType(expectedParams.At(i).Type(), dummyImports)
 		if removeWhitespace(expectedType) != removeWhitespace(astParamTypes[i]) {
 			return false
 		}
@@ -826,7 +829,7 @@ func signaturesMatch(fn *ast.FuncDecl, sig *types.Signature, pbAlias string, fse
 	}
 
 	for i := 0; i < expectedResults.Len(); i++ {
-		expectedType := formatType(expectedResults.At(i).Type(), pbAlias, dummyImports)
+		expectedType := formatType(expectedResults.At(i).Type(), dummyImports)
 		if removeWhitespace(expectedType) != removeWhitespace(astResultTypes[i]) {
 			return false
 		}
@@ -874,7 +877,7 @@ func generateMethodWithExistingBody(structName, methodName string, sig *types.Si
 	params := sig.Params()
 	for i := 0; i < params.Len(); i++ {
 		newParamType := params.At(i).Type()
-		newParamTypeStr := removeWhitespace(formatType(newParamType, pbAlias, dummyImports))
+		newParamTypeStr := removeWhitespace(formatType(newParamType, dummyImports))
 
 		// Find match
 		for _, ep := range existingParams {
@@ -909,7 +912,7 @@ func generateMethodWithExistingBody(structName, methodName string, sig *types.Si
 				pName = "req"
 			}
 		}
-		pType := formatType(params.At(i).Type(), pbAlias, imports)
+		pType := formatType(params.At(i).Type(), imports)
 		fmt.Fprintf(&buf, "%s %s", pName, pType)
 	}
 	buf.WriteString(")")
@@ -919,7 +922,7 @@ func generateMethodWithExistingBody(structName, methodName string, sig *types.Si
 		var resultList []string
 		for i := 0; i < results.Len(); i++ {
 			r := results.At(i)
-			rType := formatType(r.Type(), pbAlias, imports)
+			rType := formatType(r.Type(), imports)
 			resultList = append(resultList, rType)
 		}
 		if results.Len() == 1 {
