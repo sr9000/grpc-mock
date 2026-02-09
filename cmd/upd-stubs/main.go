@@ -158,10 +158,10 @@ func generateStubFile(outDir, pkgName string, svc serviceInfo) error {
 		return updateStubFile(outPath, structName, svc)
 	}
 
-	// Derive alias for import
-	importAlias := svc.PkgName + "pb"
-	if strings.HasSuffix(svc.PkgName, "pb") {
-		importAlias = svc.PkgName
+	// Derive alias for import using genprotoPackageAlias
+	importAlias := genprotoPackageAlias(svc.PkgPath)
+	if importAlias == "" {
+		panic("non-genproto packages are not supported yet")
 	}
 
 	// Collect imports needed
@@ -350,64 +350,95 @@ func generateMethod(structName, methodName string, sig *types.Signature, initImp
 
 func formatType(t types.Type, imports map[string]string) string {
 	switch tt := t.(type) {
-	case *types.Named:
-		obj := tt.Obj()
-		pkg := obj.Pkg()
-		if pkg == nil {
-			return obj.Name()
+	default:
+		return t.String()
+	case *types.Basic:
+		return tt.Name()
+	case *types.Interface:
+		if tt.Empty() {
+			return "interface{}"
 		}
-		// Check if it's from our pb package
-		pkgPath := pkg.Path()
-		if alias, ok := imports[pkgPath]; ok {
-			if alias != "" {
-				return alias + "." + obj.Name()
-			}
-			// Empty alias means use package name
-			return pkg.Name() + "." + obj.Name()
-		}
-		// External package - check if we need an alias to avoid conflicts
-		pkgName := pkg.Name()
-		needsAlias := false
-		for existingPath, existingAlias := range imports {
-			if existingPath == pkgPath {
-				continue
-			}
-			// Check if another import uses this package name
-			usedName := existingAlias
-			if usedName == "" {
-				// Extract package name from path
-				parts := strings.Split(existingPath, "/")
-				usedName = parts[len(parts)-1]
-			}
-			if usedName == pkgName {
-				needsAlias = true
-				break
-			}
-		}
-		if needsAlias {
-			// Generate unique alias from path
-			alias := generateUniqueAlias(pkgPath, imports)
-			imports[pkgPath] = alias
-			return alias + "." + obj.Name()
-		}
-		imports[pkgPath] = ""
-		return pkgName + "." + obj.Name()
+		return t.String()
 	case *types.Pointer:
 		return "*" + formatType(tt.Elem(), imports)
 	case *types.Slice:
 		return "[]" + formatType(tt.Elem(), imports)
 	case *types.Map:
 		return fmt.Sprintf("map[%s]%s", formatType(tt.Key(), imports), formatType(tt.Elem(), imports))
-	case *types.Interface:
-		if tt.Empty() {
-			return "interface{}"
+	case *types.Named:
+		obj := tt.Obj()
+		pkg := obj.Pkg()
+		if pkg == nil {
+			return obj.Name()
 		}
-		return t.String()
-	case *types.Basic:
-		return tt.Name()
-	default:
-		return t.String()
+		pkgPath := pkg.Path()
+
+		// Check if already in imports
+		if alias, ok := imports[pkgPath]; ok {
+			if alias != "" {
+				return alias + "." + obj.Name()
+			}
+
+			// Empty alias means use package name
+			return pkg.Name() + "." + obj.Name()
+		}
+
+		// Check if it's a genproto package - force "pb" suffix
+		if alias := genprotoPackageAlias(pkgPath); alias != "" {
+			imports[pkgPath] = alias
+			return alias + "." + obj.Name()
+		}
+
+		// External package - check if we need an alias to avoid conflicts
+		pkgName := pkg.Name()
+		if alias := resolveConflictingAlias(pkgPath, pkgName, imports); alias != "" {
+			imports[pkgPath] = alias
+			return alias + "." + obj.Name()
+		}
+
+		// add new pkgPath with empty alias (use package name)
+		imports[pkgPath] = ""
+		return pkgName + "." + obj.Name()
 	}
+}
+
+// genprotoPackageAlias returns an alias for genproto packages with "pb" suffix.
+// Returns empty string if the package is not a genproto package.
+func genprotoPackageAlias(pkgPath string) string {
+	if !strings.HasPrefix(pkgPath, genprotoPath+"/") && pkgPath != genprotoPath {
+		return ""
+	}
+	// Extract package name from path
+	parts := strings.Split(pkgPath, "/")
+	pkgName := parts[len(parts)-1]
+
+	// Add "pb" suffix if not already present
+	if strings.HasSuffix(pkgName, "pb") {
+		return pkgName
+	}
+	return pkgName + "pb"
+}
+
+// resolveConflictingAlias checks if the package name conflicts with existing imports
+// and returns a unique alias if needed. Returns empty string if no conflict.
+func resolveConflictingAlias(pkgPath, pkgName string, imports map[string]string) string {
+	for existingPath, existingAlias := range imports {
+		if existingPath == pkgPath {
+			continue
+		}
+		// Determine the effective name used by the existing import
+		usedName := existingAlias
+		if usedName == "" {
+			// Extract package name from path
+			parts := strings.Split(existingPath, "/")
+			usedName = parts[len(parts)-1]
+		}
+		if usedName == pkgName {
+			// Conflict found - generate unique alias
+			return generateUniqueAlias(pkgPath, imports)
+		}
+	}
+	return ""
 }
 
 func zeroValue(t types.Type, imports map[string]string) string {
@@ -653,9 +684,14 @@ func updateStubFile(path, structName string, svc serviceInfo) error {
 	}
 
 	if pbAlias == "" {
-		pbAlias = svc.PkgName + "pb"
-		if strings.HasSuffix(svc.PkgName, "pb") {
-			pbAlias = svc.PkgName
+		// Use genprotoPackageAlias for consistent alias derivation
+		pbAlias = genprotoPackageAlias(svc.PkgPath)
+		if pbAlias == "" {
+			// Fallback for non-genproto packages
+			pbAlias = svc.PkgName + "pb"
+			if strings.HasSuffix(svc.PkgName, "pb") {
+				pbAlias = svc.PkgName
+			}
 		}
 	}
 
