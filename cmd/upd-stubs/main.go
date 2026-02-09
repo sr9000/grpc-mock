@@ -114,6 +114,7 @@ func main() {
 
 	// Generate stubs
 	for _, sp := range pkgMap {
+		log.Printf("DEBUG: Generating stubs for %s with %d services", sp.OutDir, len(sp.Services))
 		if err := generateStubPackage(sp.OutDir, sp.PkgName, sp.Services); err != nil {
 			log.Fatalf("failed to generate stubs for %s: %v", sp.OutDir, err)
 		}
@@ -626,6 +627,7 @@ func generateWireFile(pkgMap map[string]*stubPkg) error {
 }
 
 func updateStubFile(path, structName string, svc serviceInfo) error {
+	log.Printf("DEBUG: updateStubFile called for %s", path)
 	originalSrc, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -723,11 +725,48 @@ func updateStubFile(path, structName string, svc serviceInfo) error {
 		newMethods = append(newMethods, code)
 	}
 
-	if len(newMethods) == 0 && len(replacements) == 0 && !structUpdated {
+	// Check if imports need updating (missing imports, wrong aliases, or duplicates)
+	importsNeedUpdate := false
+	seenImports := make(map[string]bool)
+	for _, imp := range node.Imports {
+		impPath := strings.Trim(imp.Path.Value, "\"")
+		if seenImports[impPath] {
+			// Duplicate import found
+			log.Printf("DEBUG: Found duplicate import: %s", impPath)
+			importsNeedUpdate = true
+			break
+		}
+		seenImports[impPath] = true
+	}
+	log.Printf("DEBUG: importsNeedUpdate after dup check: %v, imports checked: %d", importsNeedUpdate, len(node.Imports))
+	if !importsNeedUpdate {
+		for path, requiredAlias := range fileImports {
+			found := false
+			for _, imp := range node.Imports {
+				impPath := strings.Trim(imp.Path.Value, "\"")
+				if impPath == path {
+					impAlias := ""
+					if imp.Name != nil {
+						impAlias = imp.Name.Name
+					}
+					if impAlias == requiredAlias {
+						found = true
+					}
+					break
+				}
+			}
+			if !found {
+				importsNeedUpdate = true
+				break
+			}
+		}
+	}
+
+	if len(newMethods) == 0 && len(replacements) == 0 && !structUpdated && !importsNeedUpdate {
 		return nil
 	}
 
-	// Apply replacements
+	// Apply replacements (method updates)
 	sort.Slice(replacements, func(i, j int) bool {
 		return replacements[i].start > replacements[j].start
 	})
@@ -744,7 +783,81 @@ func updateStubFile(path, structName string, svc serviceInfo) error {
 		buf.WriteString(method)
 	}
 
-	res, err := goimports.Process(path, buf.Bytes(), nil)
+	// Re-parse to patch imports properly
+	updatedSrc := buf.Bytes()
+	fset = token.NewFileSet()
+	node, err = parser.ParseFile(fset, path, updatedSrc, parser.ParseComments)
+	if err != nil {
+		return fmt.Errorf("failed to re-parse after updates: %w", err)
+	}
+
+	// Collect existing imports (path -> alias)
+	existingImports := make(map[string]string)
+	for _, imp := range node.Imports {
+		impPath := strings.Trim(imp.Path.Value, "\"")
+		impAlias := ""
+		if imp.Name != nil {
+			impAlias = imp.Name.Name
+		}
+		existingImports[impPath] = impAlias
+	}
+
+	// Merge required imports (fileImports) into existingImports
+	// fileImports takes precedence for aliases (they have the correct "pb" suffix)
+	for path, alias := range fileImports {
+		existingImports[path] = alias
+	}
+
+	// Build new import section
+	var importBuf bytes.Buffer
+	importBuf.WriteString("import (\n")
+
+	sortedImports := make([]string, 0, len(existingImports))
+	for imp := range existingImports {
+		sortedImports = append(sortedImports, imp)
+	}
+	sort.Strings(sortedImports)
+
+	for _, imp := range sortedImports {
+		alias := existingImports[imp]
+		if alias != "" {
+			fmt.Fprintf(&importBuf, "\t%s %q\n", alias, imp)
+		} else {
+			fmt.Fprintf(&importBuf, "\t%q\n", imp)
+		}
+	}
+	importBuf.WriteString(")\n")
+
+	// Find import section boundaries and replace
+	var importStart, importEnd int
+	for _, decl := range node.Decls {
+		if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.IMPORT {
+			if importStart == 0 || fset.Position(gen.Pos()).Offset < importStart {
+				importStart = fset.Position(gen.Pos()).Offset
+			}
+			if fset.Position(gen.End()).Offset > importEnd {
+				importEnd = fset.Position(gen.End()).Offset
+			}
+		}
+	}
+
+	var finalSrc []byte
+	if importStart > 0 && importEnd > 0 {
+		// Replace existing import section(s)
+		finalSrc = append(finalSrc, updatedSrc[:importStart]...)
+		finalSrc = append(finalSrc, importBuf.Bytes()...)
+		finalSrc = append(finalSrc, updatedSrc[importEnd:]...)
+	} else {
+		// No imports exist - insert after package declaration
+		pkgEnd := fset.Position(node.Name.End()).Offset
+		finalSrc = append(finalSrc, updatedSrc[:pkgEnd]...)
+		finalSrc = append(finalSrc, '\n', '\n')
+		finalSrc = append(finalSrc, importBuf.Bytes()...)
+		finalSrc = append(finalSrc, updatedSrc[pkgEnd:]...)
+	}
+
+	// Format with goimports for final cleanup
+	res, err := goimports.Process(path, finalSrc, nil)
 	if err != nil {
 		return fmt.Errorf("failed to process imports: %w", err)
 	}
