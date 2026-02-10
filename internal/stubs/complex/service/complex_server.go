@@ -3,17 +3,15 @@ package service
 import (
 	"context"
 	"errors"
-	"log"
-	"strings"
-	"time"
-
 	deprecatedmodelspb "grpc-mock/internal/genproto/complex/deprecatedmodels"
 	importmepb "grpc-mock/internal/genproto/complex/importme"
 	modelspb "grpc-mock/internal/genproto/complex/models"
 	servicepb "grpc-mock/internal/genproto/complex/service"
-
 	"grpc-mock/pkg/ctxkeys"
 	"grpc-mock/pkg/ptrtools"
+	"log"
+	"strings"
+	"time"
 
 	"google.golang.org/genproto/googleapis/type/date"
 	"google.golang.org/grpc"
@@ -54,14 +52,6 @@ func (s *ComplexServer) GetModel(ctx context.Context, req *modelspb.ServiceModel
 	}
 }
 
-func (s *ComplexServer) DoNothing(ctx context.Context, req *importmepb.NothingIn) (*importmepb.NothingOut, error) {
-	if s.EnableLogging {
-		reqID, _ := ctx.Value(ctxkeys.RequestID{}).(string)
-		log.Printf("[req_id=%s] [ComplexServer] stub DoNothing called with: %+v", reqID, req)
-	}
-	return &importmepb.NothingOut{}, nil
-}
-
 func (s *ComplexServer) GetOldModel(ctx context.Context, req *deprecatedmodelspb.ServiceModel) (*deprecatedmodelspb.ServiceModel, error) {
 	if s.EnableLogging {
 		reqID, _ := ctx.Value(ctxkeys.RequestID{}).(string)
@@ -90,4 +80,12 @@ func time2date(t time.Time) date.Date {
 		Month: int32(t.Month()),
 		Day:   int32(t.Day()),
 	}
+}
+
+func (s *ComplexServer) DoNothing(ctx context.Context, req *importmepb.NothingIn) (*importmepb.NothingOut, error) {
+	if s.EnableLogging {
+		reqID, _ := ctx.Value(ctxkeys.RequestID{}).(string)
+		log.Printf("[req_id=%s] [ComplexServer] stub DoNothing called with: %+v", reqID, req)
+	}
+	return &importmepb.NothingOut{}, nil
 }
