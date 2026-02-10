@@ -170,7 +170,7 @@ func InitializeApp(server grpc.ServiceRegistrar, enableLogging bool) (*App, erro
 
 ```go
 func (s *EchoServer) Echo(ctx context.Context, req *echopb.OldReq) (*echopb.Resp, error) {
-return &echopb.Resp{Msg: "Привет"}, nil
+	return &echopb.Resp{Msg: "Привет"}, nil
 }
 ```
 
@@ -179,7 +179,7 @@ return &echopb.Resp{Msg: "Привет"}, nil
 ```go
 // Previous signature: func (s *EchoServer) Echo(ctx context.Context, req *echopb.OldReq) (*echopb.Resp, error)
 func (s *EchoServer) Echo(ctx context.Context, req *echopb.NewReq) (*echopb.Resp, error) {
-return &echopb.Resp{Msg: "Привет"}, nil
+	return &echopb.Resp{Msg: "Привет"}, nil
 }
 ```
 
