@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"grpc-mock/internal/app"
 	"grpc-mock/pkg/ctxkeys"
+	"grpc-mock/pkg/metrics"
 	"grpc-mock/pkg/mgmt"
 	"grpc-mock/pkg/recorder"
 	"log"
@@ -25,7 +26,9 @@ type Config struct {
 	Host             string `env:"HOST" envDefault:"0.0.0.0"`
 	Port             string `env:"PORT" envDefault:"50051"`
 	MgmtPort         string `env:"MGMT_PORT" envDefault:"9000"`
+	MetricsPort      string `env:"METRICS_PORT" envDefault:"9090"`
 	EnableMgmt       bool   `env:"MGMT_ENABLED" envDefault:"true"`
+	EnableMetrics    bool   `env:"METRICS_ENABLED" envDefault:"true"`
 	EnableReflection bool   `env:"GRPC_REFLECTION" envDefault:"false"`
 	EnableLogging    bool   `env:"GRPC_LOGGING" envDefault:"true"`
 }
@@ -58,7 +61,9 @@ func main() {
 	runCmd.Flags().StringP("host", "", "", "Host interface to bind (overrides HOST env var)")
 	runCmd.Flags().StringP("port", "p", "", "Port to listen on (overrides PORT env var)")
 	runCmd.Flags().StringP("mgmt-port", "m", "", "Management server port (overrides MGMT_PORT env var)")
+	runCmd.Flags().StringP("metrics-port", "", "", "Metrics server port (overrides METRICS_PORT env var)")
 	runCmd.Flags().Bool("no-mgmt", false, "Disable management server (overrides MGMT_ENABLED env var)")
+	runCmd.Flags().Bool("no-metrics", false, "Disable metrics server (overrides METRICS_ENABLED env var)")
 	runCmd.Flags().BoolP("reflection", "r", false, "Enable gRPC server reflection (overrides GRPC_REFLECTION env var)")
 	runCmd.Flags().Bool("no-logs", false, "Disable gRPC request logging (overrides GRPC_LOGGING env var)")
 
@@ -95,9 +100,16 @@ func runServer(cmd *cobra.Command, args []string) error {
 	if v, _ := cmd.Flags().GetString("mgmt-port"); v != "" {
 		cfg.MgmtPort = v
 	}
+	if v, _ := cmd.Flags().GetString("metrics-port"); v != "" {
+		cfg.MetricsPort = v
+	}
 	if cmd.Flags().Changed("no-mgmt") {
 		v, _ := cmd.Flags().GetBool("no-mgmt")
 		cfg.EnableMgmt = !v
+	}
+	if cmd.Flags().Changed("no-metrics") {
+		v, _ := cmd.Flags().GetBool("no-metrics")
+		cfg.EnableMetrics = !v
 	}
 	if cmd.Flags().Changed("reflection") {
 		v, _ := cmd.Flags().GetBool("reflection")
@@ -119,8 +131,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 	addr := net.JoinHostPort(cfg.Host, cfg.Port)
 
 	// Log effective configuration before starting.
-	log.Printf("starting gRPC server with config: host=%s port=%s mgmt-port=%s mgmt-enabled=%t reflection=%t logging=%t",
-		cfg.Host, cfg.Port, cfg.MgmtPort, cfg.EnableMgmt, cfg.EnableReflection, cfg.EnableLogging)
+	log.Printf("starting gRPC server with config: host=%s port=%s mgmt-port=%s metrics-port=%s mgmt-enabled=%t metrics-enabled=%t reflection=%t logging=%t",
+		cfg.Host, cfg.Port, cfg.MgmtPort, cfg.MetricsPort, cfg.EnableMgmt, cfg.EnableMetrics, cfg.EnableReflection, cfg.EnableLogging)
 
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -130,9 +142,15 @@ func runServer(cmd *cobra.Command, args []string) error {
 	// Create recorder for e2e testing
 	rec := recorder.New()
 
+	// Create metrics if enabled
+	var metricsServer *metrics.Metrics
+	if cfg.EnableMetrics {
+		metricsServer = metrics.New(cfg.MetricsPort)
+	}
+
 	var opts []grpc.ServerOption
 	// Always use recording interceptor for e2e testing
-	opts = append(opts, grpc.UnaryInterceptor(recordingInterceptor(rec, cfg.EnableLogging)))
+	opts = append(opts, grpc.UnaryInterceptor(recordingInterceptor(rec, metricsServer, cfg.EnableLogging)))
 	grpcServer := grpc.NewServer(opts...)
 
 	if _, err := app.InitializeApp(grpcServer, cfg.EnableLogging); err != nil {
@@ -149,6 +167,13 @@ func runServer(cmd *cobra.Command, args []string) error {
 		mgmtServer = mgmt.New(rec, cfg.MgmtPort)
 		if err := mgmtServer.Start(); err != nil {
 			return fmt.Errorf("failed to start management server: %w", err)
+		}
+	}
+
+	// Start metrics server if enabled
+	if metricsServer != nil {
+		if err := metricsServer.Start(); err != nil {
+			return fmt.Errorf("failed to start metrics server: %w", err)
 		}
 	}
 
@@ -175,12 +200,21 @@ func runServer(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Stop metrics server if it was started
+	if metricsServer != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := metricsServer.Stop(shutdownCtx); err != nil {
+			log.Printf("metrics server shutdown error: %v", err)
+		}
+	}
+
 	log.Println("server stopped")
 
 	return nil
 }
 
-func recordingInterceptor(rec *recorder.Recorder, enableLogging bool) grpc.UnaryServerInterceptor {
+func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogging bool) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 		reqID := rand.Text()
 		ctx = context.WithValue(ctx, ctxkeys.RequestID{}, reqID)
@@ -206,6 +240,11 @@ func recordingInterceptor(rec *recorder.Recorder, enableLogging bool) grpc.Unary
 				if enableLogging {
 					log.Printf("[req_id=%s] gRPC panic: %s: %v", reqID, info.FullMethod, r)
 				}
+				// Record metrics for panic
+				if m != nil {
+					m.RecordRequest(info.FullMethod, record.DurationMs)
+					m.RecordPanic(info.FullMethod, record.Panic)
+				}
 				// Re-panic to let gRPC handle it
 				panic(r)
 			}
@@ -220,10 +259,19 @@ func recordingInterceptor(rec *recorder.Recorder, enableLogging bool) grpc.Unary
 			if enableLogging {
 				log.Printf("[req_id=%s] gRPC error: %s: %v", reqID, info.FullMethod, err)
 			}
+			// Record metrics for error
+			if m != nil {
+				m.RecordError(info.FullMethod, record.Error)
+			}
 		} else {
 			if enableLogging {
 				log.Printf("[req_id=%s] gRPC success: %s", reqID, info.FullMethod)
 			}
+		}
+
+		// Record request metrics
+		if m != nil {
+			m.RecordRequest(info.FullMethod, record.DurationMs)
 		}
 
 		rec.Record(record)
