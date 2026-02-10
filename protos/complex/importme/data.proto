@@ -1,0 +1,12 @@
+syntax = "proto3";
+package complex.importme;
+
+option go_package = "grpc-mock/internal/genproto/complex/importme;importme";
+
+
+message ImportedData {
+  string value = 1;
+}
+
+message NothingIn {}
+message NothingOut {}

@@ -1,0 +1,32 @@
+syntax = "proto3";
+package complex.service;
+
+option go_package = "grpc-mock/internal/genproto/complex/service;service";
+
+import "complex/service/models.proto";
+import "complex/service/oldmodels.proto";
+import "complex/importme/data.proto";
+import "google/api/annotations.proto";
+
+
+service ComplexService {
+  rpc GetModel(models.ServiceModel) returns (models.ServiceModel) {
+    option (google.api.http) = {
+      get: "/v1/model"
+    };
+  }
+
+
+  rpc GetOldModel(deprecatedmodels.ServiceModel) returns (deprecatedmodels.ServiceModel) {
+    option (google.api.http) = {
+      get: "/v1/oldmodel"
+    };
+  }
+
+  rpc DoNothing(importme.NothingIn) returns (importme.NothingOut) {
+    option (google.api.http) = {
+      post: "/v1/nothing"
+      body: "*"
+    };
+  }
+}

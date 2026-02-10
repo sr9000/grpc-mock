@@ -1,0 +1,13 @@
+syntax = "proto3";
+package complex.deprecatedmodels;
+
+option go_package = "grpc-mock/internal/genproto/complex/deprecatedmodels;deprecatedmodels";
+
+import "complex/importme/data.proto";
+import "google/type/date.proto";
+
+
+message ServiceModel {
+  complex.importme.ImportedData data = 1;
+  google.type.Date created_at = 2;
+}
