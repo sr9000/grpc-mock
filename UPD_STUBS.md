@@ -73,14 +73,14 @@
 ```text
 ./internal/
 ├── app
-│   ├── wire.go              # Update: Wire file, describes dependency injection
-│   └── wire_gen.go          # Update: Real file used in compilation, produced from wire.go
-├── genproto                 # Input: Generated gRPC code (pb.go files)
-│   └── *                    # Input: Each service in a separate directory (keeps original proto folder structure)
-│       ├── *.pb.go
-│       └── *_grpc.pb.go
-└── stubs                    # Output: Generated implementation stubs
-    └── *                    # Output: Each service in a separate directory (keeps original proto folder structure)
+│   ├── wire.go              # Обновляется: Wire файл, описывает внедрение зависимостей
+│   └── wire_gen.go          # Обновляется: Реальный файл для компиляции, генерируется из wire.go
+├── genproto                 # Входные данные: Сгенерированный gRPC-код (pb.go файлы)
+│   └── *                    # Входные данные: Каждый сервис в отдельной директории (сохраняется структура proto)
+│       ├── *.pb.go
+│       └── *_grpc.pb.go
+└── stubs                    # Выходные данные: Сгенерированные заглушки реализаций
+    └── *                    # Выходные данные: Каждый сервис в отдельной директории (сохраняется структура proto)
         └── *_server.go
 ```
 
@@ -107,7 +107,7 @@ import (
 var _ echopb.EchoServiceServer = (*EchoServer)(nil)
 
 type EchoServer struct {
-	echopb.UnimplementedEchoServiceServer // Unimplemented-заглушки (если "случайно" забыть их обновить)
+	echopb.UnimplementedEchoServiceServer // Встраивание Unimplemented-заглушки для прямой совместимости
 	EnableLogging                         bool
 }
 
@@ -122,7 +122,7 @@ func NewEchoServer(server grpc.ServiceRegistrar, enableLogging bool) *EchoServer
 func (s *EchoServer) Echo(ctx context.Context, req *echopb.EchoRequest) (*echopb.EchoResponse, error) {
 	if s.EnableLogging {
 		reqID, _ := ctx.Value(ctxkeys.RequestID{}).(string)
-		log.Printf("[req_id=%s] [EchoServer] stub Echo called with: %+v", reqID, req)
+		log.Printf("[req_id=%s] [EchoServer] вызван метод Echo с параметрами: %+v", reqID, req)
 	}
 	return &echopb.EchoResponse{}, nil
 }
