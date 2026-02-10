@@ -45,45 +45,60 @@ func main() {
 	}{
 		// GetModel Load
 		{
-			rpsFunc: sineWave(50, 20, 10*time.Second, 0),
-			task:    getModelFabric("good"),
+			// Main sine wave traffic 50-150 RPS, 60s period
+			rpsFunc: sineWave(100, 50, 60*time.Second, 0),
+			task:    getModelFabric("first"),
 		},
 		{
-			rpsFunc: sineWave(20, 10, 5*time.Second, 2500*time.Millisecond),
+			// High frequency low amplitude noise 20-40 RPS, 13s period
+			rpsFunc: sineWave(30, 10, 13*time.Second, 0),
+			task:    getModelFabric("second"),
+		},
+		{
+			// Periodic errors 0-10 RPS, 20s period
+			rpsFunc: sineWave(5, 5, 20*time.Second, 0),
 			task:    getModelFabric("error: Alice"),
 		},
 		{
-			rpsFunc: sineWave(20, 10, 5*time.Second, 2500*time.Millisecond),
+			// Periodic errors offset 0-6 RPS, 17s period
+			rpsFunc: sineWave(3, 3, 17*time.Second, 5*time.Second),
 			task:    getModelFabric("error: Bob"),
 		},
 		{
-			rpsFunc: sineWave(20, 10, 5*time.Second, 2500*time.Millisecond),
+			// Periodic errors offset 0-4 RPS, 11s period
+			rpsFunc: sineWave(5, 15, 11*time.Second, 2*time.Second),
 			task:    getModelFabric("error: Carol"),
 		},
 		{
-			rpsFunc: sineWave(5, 2, 2*time.Second, 0),
+			// Rare panic, short spike every 60s
+			rpsFunc: sineWave(2, 10, 60*time.Second, 0),
 			task:    getModelFabric("panic: 42"),
 		},
 		{
-			rpsFunc: sineWave(5, 2, 2*time.Second, 0),
+			// Rare panic, short spike every 45s, offset
+			rpsFunc: sineWave(1, 4, 45*time.Second, 30*time.Second),
 			task:    getModelFabric("panic: 1000-7"),
 		},
 		// GetOldModel Load
 		{
-			rpsFunc: sawtoothWave(40, 20, 10*time.Second, 0),
+			// Steady sawtooth 40-60 RPS, 30s period
+			rpsFunc: sawtoothWave(40, 20, 30*time.Second, 0),
 			task:    getOldModelFabric("good"),
 		},
 		{
-			rpsFunc: sawtoothWave(15, 10, 5*time.Second, 0),
+			// Periodic errors sawtooth 5-10 RPS, 20s period
+			rpsFunc: sawtoothWave(5, 5, 20*time.Second, 0),
 			task:    getOldModelFabric("error: Jesus Christ"),
 		},
 		{
-			rpsFunc: sawtoothWave(5, 4, 2*time.Second, 0),
+			// Rare panic sawtooth 1-3 RPS, 60s period
+			rpsFunc: sawtoothWave(1, 2, 60*time.Second, 0),
 			task:    getOldModelFabric("panic: 666"),
 		},
 		// DoNothing Load
 		{
-			rpsFunc: constant(100),
+			// Constant Low Background Load 50 RPS
+			rpsFunc: constant(50),
 			task: func(ctx context.Context, c servicepb.ComplexServiceClient) {
 				_, _ = c.DoNothing(ctx, &importmepb.NothingIn{})
 			},
