@@ -87,9 +87,28 @@
     },
     "/doc": {
       "get": {
-        "summary": "Get OpenAPI documentation",
-        "description": "Returns this OpenAPI specification as JSON.",
+        "summary": "Interactive Swagger UI",
+        "description": "Returns an interactive Swagger UI page for exploring and testing the API.",
         "operationId": "getDoc",
+        "responses": {
+          "200": {
+            "description": "Swagger UI HTML page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "summary": "Get OpenAPI specification",
+        "description": "Returns this OpenAPI specification as JSON.",
+        "operationId": "getOpenAPI",
         "responses": {
           "200": {
             "description": "OpenAPI specification",
