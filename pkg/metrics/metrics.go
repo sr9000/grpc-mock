@@ -23,7 +23,7 @@ type Metrics struct {
 
 	// Resource metrics (custom gauges)
 	MemoryUsage *prometheus.GaugeVec
-	CPUUsage    prometheus.Gauge
+	Goroutines  prometheus.Gauge
 
 	registry *prometheus.Registry
 	server   *http.Server
@@ -40,7 +40,7 @@ func New(port string) *Metrics {
 				Name: "grpc_requests_total",
 				Help: "Total number of gRPC requests",
 			},
-			[]string{"method"},
+			[]string{"method", "status"},
 		),
 		RequestDuration: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
@@ -48,7 +48,7 @@ func New(port string) *Metrics {
 				Help:    "Histogram of gRPC request latencies",
 				Buckets: prometheus.DefBuckets,
 			},
-			[]string{"method"},
+			[]string{"method", "status"},
 		),
 		ErrorsTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
@@ -66,14 +66,14 @@ func New(port string) *Metrics {
 		),
 		MemoryUsage: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Name: "process_memory_bytes",
+				Name: "grpc_memory_bytes",
 				Help: "Memory usage in bytes",
 			},
 			[]string{"type"},
 		),
-		CPUUsage: prometheus.NewGauge(
+		Goroutines: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Name: "process_goroutines",
+				Name: "grpc_goroutines_total",
 				Help: "Number of goroutines",
 			},
 		),
@@ -87,7 +87,7 @@ func New(port string) *Metrics {
 	registry.MustRegister(m.ErrorsTotal)
 	registry.MustRegister(m.PanicsTotal)
 	registry.MustRegister(m.MemoryUsage)
-	registry.MustRegister(m.CPUUsage)
+	registry.MustRegister(m.Goroutines)
 
 	// Register default Go collectors for CPU, memory, GC stats
 	registry.MustRegister(collectors.NewGoCollector())
@@ -96,10 +96,10 @@ func New(port string) *Metrics {
 	return m
 }
 
-// RecordRequest records a gRPC request with its duration
-func (m *Metrics) RecordRequest(method string, durationMs int64) {
-	m.RequestsTotal.WithLabelValues(method).Inc()
-	m.RequestDuration.WithLabelValues(method).Observe(float64(durationMs) / 1000.0)
+// RecordRequest records a gRPC request with its duration and status
+func (m *Metrics) RecordRequest(method string, durationMs int64, status string) {
+	m.RequestsTotal.WithLabelValues(method, status).Inc()
+	m.RequestDuration.WithLabelValues(method, status).Observe(float64(durationMs) / 1000.0)
 }
 
 // RecordError records a gRPC error
@@ -133,7 +133,7 @@ func (m *Metrics) updateResourceMetrics() {
 	m.MemoryUsage.WithLabelValues("heap_inuse").Set(float64(memStats.HeapInuse))
 	m.MemoryUsage.WithLabelValues("stack_inuse").Set(float64(memStats.StackInuse))
 
-	m.CPUUsage.Set(float64(runtime.NumGoroutine()))
+	m.Goroutines.Set(float64(runtime.NumGoroutine()))
 }
 
 // Start starts the metrics HTTP server

@@ -242,7 +242,7 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 				}
 				// Record metrics for panic
 				if m != nil {
-					m.RecordRequest(info.FullMethod, record.DurationMs)
+					m.RecordRequest(info.FullMethod, record.DurationMs, "panic")
 					m.RecordPanic(info.FullMethod, record.Panic)
 				}
 				// Re-panic to let gRPC handle it
@@ -261,17 +261,17 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 			}
 			// Record metrics for error
 			if m != nil {
+				m.RecordRequest(info.FullMethod, record.DurationMs, "error")
 				m.RecordError(info.FullMethod, record.Error)
 			}
 		} else {
 			if enableLogging {
 				log.Printf("[req_id=%s] gRPC success: %s", reqID, info.FullMethod)
 			}
-		}
-
-		// Record request metrics
-		if m != nil {
-			m.RecordRequest(info.FullMethod, record.DurationMs)
+			// Record request metrics for success
+			if m != nil {
+				m.RecordRequest(info.FullMethod, record.DurationMs, "success")
+			}
 		}
 
 		rec.Record(record)
