@@ -39,3 +39,8 @@ Thumbs.db
 !/internal/genproto/echo
 !/internal/stubs/echo
 !/protos/echo
+
+
+!/internal/genproto/complex
+!/internal/stubs/complex
+!/protos/complex
