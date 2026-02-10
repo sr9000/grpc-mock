@@ -1,0 +1,151 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "gRPC Mock Management API",
+    "description": "Management API for gRPC mock server used in e2e testing. Provides endpoints to retrieve recorded gRPC calls and clear logs.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:9000",
+      "description": "Default management server"
+    }
+  ],
+  "paths": {
+    "/logs": {
+      "get": {
+        "summary": "Get all recorded gRPC calls",
+        "description": "Returns all recorded gRPC calls as JSON array, including request/response bodies, timestamps, errors, and panics.",
+        "operationId": "getLogs",
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved logs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CallRecord"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to serialize logs"
+          }
+        }
+      }
+    },
+    "/clear": {
+      "post": {
+        "summary": "Clear all recorded gRPC calls",
+        "description": "Removes all recorded gRPC calls from memory.",
+        "operationId": "clearLogs",
+        "responses": {
+          "200": {
+            "description": "Successfully cleared logs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "cleared"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Clear all recorded gRPC calls",
+        "description": "Removes all recorded gRPC calls from memory.",
+        "operationId": "clearLogsDelete",
+        "responses": {
+          "200": {
+            "description": "Successfully cleared logs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "cleared"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/doc": {
+      "get": {
+        "summary": "Get OpenAPI documentation",
+        "description": "Returns this OpenAPI specification as JSON.",
+        "operationId": "getDoc",
+        "responses": {
+          "200": {
+            "description": "OpenAPI specification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CallRecord": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "Unique identifier for the request"
+          },
+          "method": {
+            "type": "string",
+            "description": "Full gRPC method name (e.g., /EchoService/Echo)"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the request was received"
+          },
+          "request": {
+            "type": "object",
+            "description": "Full request body"
+          },
+          "response": {
+            "type": "object",
+            "description": "Full response body (if successful)"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message (if the call failed)"
+          },
+          "panic": {
+            "type": "string",
+            "description": "Panic message (if a panic occurred)"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Request duration in milliseconds"
+          }
+        }
+      }
+    }
+  }
+}
