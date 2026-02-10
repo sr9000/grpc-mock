@@ -17,6 +17,8 @@ services:
       - gomod-cache:/go/pkg/mod
     ports:
       - "50051:50051"
+      - "9000:9000"
+      - "9100:9100"
     environment:
       - HOST=0.0.0.0
       - GRPC_REFLECTION=true

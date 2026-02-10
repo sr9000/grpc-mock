@@ -2,7 +2,6 @@ package echo
 
 import (
 	"context"
-	"errors"
 	echopb "grpc-mock/internal/genproto/echo"
 	"grpc-mock/pkg/ctxkeys"
 	"log"
@@ -11,8 +10,6 @@ import (
 )
 
 var _ echopb.EchoServiceServer = (*EchoServer)(nil)
-
-var ErrNoWay = errors.New("no way")
 
 type EchoServer struct {
 	echopb.UnimplementedEchoServiceServer
