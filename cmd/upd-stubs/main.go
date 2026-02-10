@@ -114,7 +114,6 @@ func main() {
 
 	// Generate stubs
 	for _, sp := range pkgMap {
-		log.Printf("DEBUG: Generating stubs for %s with %d services", sp.OutDir, len(sp.Services))
 		if err := generateStubPackage(sp.OutDir, sp.PkgName, sp.Services); err != nil {
 			log.Fatalf("failed to generate stubs for %s: %v", sp.OutDir, err)
 		}
@@ -627,7 +626,6 @@ func generateWireFile(pkgMap map[string]*stubPkg) error {
 }
 
 func updateStubFile(path, structName string, svc serviceInfo) error {
-	log.Printf("DEBUG: updateStubFile called for %s", path)
 	originalSrc, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -732,13 +730,11 @@ func updateStubFile(path, structName string, svc serviceInfo) error {
 		impPath := strings.Trim(imp.Path.Value, "\"")
 		if seenImports[impPath] {
 			// Duplicate import found
-			log.Printf("DEBUG: Found duplicate import: %s", impPath)
 			importsNeedUpdate = true
 			break
 		}
 		seenImports[impPath] = true
 	}
-	log.Printf("DEBUG: importsNeedUpdate after dup check: %v, imports checked: %d", importsNeedUpdate, len(node.Imports))
 	if !importsNeedUpdate {
 		for path, requiredAlias := range fileImports {
 			found := false
