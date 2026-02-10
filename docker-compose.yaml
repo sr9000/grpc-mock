@@ -3,6 +3,10 @@ services:
     build:
       context: .
       target: dev  # Targeted specifically for the 'dev' stage
+    # Run as host user to keep correct file permissions on mounted volumes.
+    # On Linux: uses actual UID/GID from environment.
+    # On macOS: Docker Desktop handles permissions, UID/GID default to 0 (root) which works fine.
+    user: "${UID:-0}:${GID:-0}"
     volumes:
       # Mount the current directory to /app in the container.
       # This enables bi-directional sync:
