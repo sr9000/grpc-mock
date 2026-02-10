@@ -7,7 +7,53 @@ ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
 PROTOS_DIR = os.path.join(ROOT_DIR, 'protos')
 GO_MODULE_PREFIX = "grpc-mock/internal/genproto"
 
+
+def get_proto_package(content):
+    """Extract the package declaration from proto file content."""
+    pattern = r'package\s+([\w\.]+);'
+    match = re.search(pattern, content)
+    if match:
+        return match.group(1)
+    return None
+
+
+def get_go_package_from_proto_package(proto_package):
+    """Generate Go package path from proto package declaration."""
+    if not proto_package:
+        return ""
+
+    # Convert proto package (e.g., "complex.service.models") to path (e.g., "complex/service/models")
+    parts = proto_package.split('.')
+    # Filter empty parts
+    parts = [p for p in parts if p]
+
+    if not parts:
+        return ""
+
+    # Determine alias
+    last = parts[-1]
+    # Check if version (v1, v2, v1beta1, etc)
+    if re.match(r'^v\d+', last):
+        # Versioned, e.g. store/v1 -> storev1
+        if len(parts) > 1:
+            alias = parts[-2].replace('_', '') + last
+        else:
+            alias = last
+    else:
+        # Not versioned, e.g. echo -> echo, hello_world -> helloworld
+        alias = last.replace('_', '')
+
+    # Construct full path
+    import_path = f"{GO_MODULE_PREFIX}/{'/'.join(parts)}"
+    return f"{import_path};{alias}"
+
+
 def get_go_package(rel_dir):
+    """Generate Go package path from directory structure.
+
+    With paths=source_relative in protoc, all proto files in the same directory
+    must have the same go_package based on the directory path.
+    """
     # Normalize separators to /
     parts = rel_dir.replace('\\', '/').split('/')
     # Filter empty parts
@@ -41,7 +87,14 @@ def process_file(file_path):
     rel_path = os.path.relpath(file_path, PROTOS_DIR)
     rel_dir = os.path.dirname(rel_path)
 
-    new_go_package = get_go_package(rel_dir)
+    # Try to extract proto package from file content first
+    proto_package = get_proto_package(content)
+    if proto_package:
+        new_go_package = get_go_package_from_proto_package(proto_package)
+    else:
+        # Fallback to directory-based package
+        new_go_package = get_go_package(rel_dir)
+
     if not new_go_package:
         print(f"Skipping {rel_path}: in root or cannot determine package")
         return

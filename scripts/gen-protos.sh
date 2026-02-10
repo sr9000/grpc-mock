@@ -52,8 +52,8 @@ for dir in "${folders[@]}"; do
   $PROTOC_BIN \
     -I "$PROTO_DIR" \
     -I "$GOOGLEAPIS_DIR" \
-    --go_out="$OUT_DIR" --go_opt=paths=source_relative \
-    --go-grpc_out="$OUT_DIR" --go-grpc_opt=paths=source_relative \
+    --go_out="$ROOT_DIR" --go_opt=module=grpc-mock \
+    --go-grpc_out="$ROOT_DIR" --go-grpc_opt=module=grpc-mock \
     "${files[@]}"
   echo "done $rel_path"
 done
