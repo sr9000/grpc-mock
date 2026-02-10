@@ -26,7 +26,7 @@ type Config struct {
 	Host             string `env:"HOST" envDefault:"0.0.0.0"`
 	Port             string `env:"PORT" envDefault:"50051"`
 	MgmtPort         string `env:"MGMT_PORT" envDefault:"9000"`
-	MetricsPort      string `env:"METRICS_PORT" envDefault:"9090"`
+	MetricsPort      string `env:"METRICS_PORT" envDefault:"9100"`
 	EnableMgmt       bool   `env:"MGMT_ENABLED" envDefault:"true"`
 	EnableMetrics    bool   `env:"METRICS_ENABLED" envDefault:"true"`
 	EnableReflection bool   `env:"GRPC_REFLECTION" envDefault:"false"`
