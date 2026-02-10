@@ -16,7 +16,7 @@ services:
       - HOST=0.0.0.0
       - GRPC_REFLECTION=${GRPC_REFLECTION:-true}
       - GRPC_LOGGING=${GRPC_LOGGING:-false}
-    command: ["run", "--metrics", "--metrics-port", "9100", "--mgmt", "--mgmt-port", "9000"]
+    command: ["run", "--metrics-port", "9100", "--mgmt-port", "9000"]
     restart: unless-stopped
 
   prometheus:

@@ -245,8 +245,10 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 					m.RecordRequest(info.FullMethod, record.DurationMs, "panic")
 					m.RecordPanic(info.FullMethod, record.Panic)
 				}
-				// Re-panic to let gRPC handle it
-				panic(r)
+
+				// Wrap panic as error to return to client
+				err = fmt.Errorf("panic: %v", r)
+				resp = nil
 			}
 		}()
 

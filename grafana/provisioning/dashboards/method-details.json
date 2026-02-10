@@ -146,7 +146,7 @@
       "id": 1,
       "options": {
         "legend": {
-          "calcs": ["sum"],
+          "calcs": ["lastNotNull"],
           "displayMode": "table",
           "placement": "right",
           "showLegend": true
@@ -285,7 +285,7 @@
       "id": 2,
       "options": {
         "legend": {
-          "calcs": ["mean"],
+          "calcs": ["lastNotNull"],
           "displayMode": "table",
           "placement": "right",
           "showLegend": true
@@ -304,7 +304,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(grpc_requests_total{method=\"$method\"}[$__rate_interval])) by (status)",
+          "expr": "sum(rate(grpc_requests_total{method=\"$method\"}[$__rate_interval])) by (status) / ignoring(status) group_left sum(rate(grpc_requests_total{method=\"$method\"}[$__rate_interval]))",
           "legendFormat": "{{status}}",
           "refId": "A"
         }
@@ -389,7 +389,7 @@
       "id": 3,
       "options": {
         "legend": {
-          "calcs": ["sum"],
+          "calcs": ["lastNotNull"],
           "displayMode": "table",
           "placement": "right",
           "showLegend": true
@@ -482,7 +482,7 @@
       "id": 4,
       "options": {
         "legend": {
-          "calcs": ["mean"],
+          "calcs": ["lastNotNull"],
           "displayMode": "table",
           "placement": "right",
           "showLegend": true
@@ -501,7 +501,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(grpc_errors_total{method=\"$method\"}[$__rate_interval])) by (error)",
+          "expr": "sum(rate(grpc_errors_total{method=\"$method\"}[$__rate_interval])) by (error) / ignoring(error) group_left sum(rate(grpc_errors_total{method=\"$method\"}[$__rate_interval]))",
           "legendFormat": "{{error}}",
           "refId": "A"
         }
@@ -586,7 +586,7 @@
       "id": 5,
       "options": {
         "legend": {
-          "calcs": ["sum"],
+          "calcs": ["lastNotNull"],
           "displayMode": "table",
           "placement": "right",
           "showLegend": true
@@ -679,7 +679,7 @@
       "id": 6,
       "options": {
         "legend": {
-          "calcs": ["mean"],
+          "calcs": ["lastNotNull"],
           "displayMode": "table",
           "placement": "right",
           "showLegend": true
@@ -698,7 +698,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(grpc_panics_total{method=\"$method\"}[$__rate_interval])) by (panic)",
+          "expr": "sum(rate(grpc_panics_total{method=\"$method\"}[$__rate_interval])) by (panic) / ignoring(panic) group_left sum(rate(grpc_panics_total{method=\"$method\"}[$__rate_interval]))",
           "legendFormat": "{{panic}}",
           "refId": "A"
         }
