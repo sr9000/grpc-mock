@@ -421,6 +421,57 @@ make compose-logs
 make compose-down
 ```
 
+Для smoke-тестирования:
+
+```bash
+make compose-smoke
+```
+
+Compose-файлы:
+- `docker-compose.yaml` — dev-окружение.
+- `docker-compose.observability.yaml` — полный observability-стек (Prometheus, Loki, Tempo, OTel Collector, Grafana).
+- Конфиги сервисов лежат в `deploy/` (`prometheus.yaml`, `otel.yaml`, `promtail.yaml`, `tempo.yaml`, `grafana/`).
+
+````
+This is the description of what the code block changes:
+<changeDescription>
+Update README observability section with new compose info
+</changeDescription>
+
+This is the code block that represents the suggested code change:
+````markdown
+### Запуск полного стека (Mock + Grafana + Prometheus)
+
+Для запуска стека мониторинга (доступен по адресу http://localhost:3000):
+
+```bash
+make compose-up
+```
+
+Для просмотра логов:
+
+```bash
+make compose-logs
+```
+
+Для остановки:
+
+```bash
+make compose-down
+```
+
+Для smoke-тестирования:
+
+```bash
+make compose-smoke
+```
+
+Compose-файлы:
+- `docker-compose.yaml` — dev-окружение.
+- `docker-compose.observability.yaml` — полный observability-стек (Prometheus, Loki, Tempo, OTel Collector, Grafana).
+- Конфиги сервисов лежат в `deploy/` (`prometheus.yaml`, `otel.yaml`, `promtail.yaml`, `tempo.yaml`, `grafana/`).
+```
+
 ### Сборка для продакшена
 
 Для создания легковесного, готового к деплою Docker-образа используется многоэтапная сборка (multistage build).

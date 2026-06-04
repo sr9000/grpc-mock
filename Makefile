@@ -1,4 +1,4 @@
-.PHONY: all build run gen-proto gen-wire clean help validate-observability
+.PHONY: all build run gen-proto gen-wire clean help validate-observability compose-up compose-logs compose-down compose-smoke
 
 # Default target: show help when `make` is called without arguments
 .DEFAULT_GOAL := help
@@ -71,24 +71,25 @@ docker-dev:
 	@echo "Starting development environment..."
 	docker compose up --build
 
-# Docker Compose (Full Stack with Grafana)
+# Docker Compose (Full Observability Stack)
 compose-up:
 	@echo
 	@echo "===================="
-	@echo "Starting full stack (gRPC Mock + Prometheus + Grafana)..."
-	docker compose -f docker-compose-grafana.yaml up --build -d
+	@echo "Starting observability stack (gRPC Mock + Prometheus + Loki + Tempo + OTel + Grafana)..."
+	docker compose -f docker-compose.observability.yaml --progress plain build grpc-mock
+	docker compose -f docker-compose.observability.yaml up -d
 
 compose-logs:
 	@echo
 	@echo "===================="
 	@echo "Following logs..."
-	docker compose -f docker-compose-grafana.yaml logs -f
+	docker compose -f docker-compose.observability.yaml logs -f
 
 compose-down:
 	@echo
 	@echo "===================="
-	@echo "Stopping full stack..."
-	docker compose -f docker-compose-grafana.yaml down
+	@echo "Stopping observability stack..."
+	docker compose -f docker-compose.observability.yaml down
 
 # Smoke test: verify the full stack works end-to-end
 compose-smoke:
@@ -115,8 +116,8 @@ help:
 	@echo "  docker-build - Build production Docker image"
 	@echo "  docker-run   - Run production Docker container"
 	@echo "  docker-dev   - Start development environment (build + run)"
-	@echo "  compose-up   - Start full stack (Mock + Monitoring)"
-	@echo "  compose-logs - Follow logs of full stack"
-	@echo "  compose-down - Stop full stack"
-	@echo "  compose-smoke - Smoke test the full stack"
-	@echo "  validate-observability - Validate full observability stack (Prometheus + Grafana + dashboards)"
+	@echo "  compose-up   - Start observability stack (Mock + Prometheus + Loki + Tempo + Grafana)"
+	@echo "  compose-logs - Follow logs of observability stack"
+	@echo "  compose-down - Stop observability stack"
+	@echo "  compose-smoke - Smoke test the observability stack"
+	@echo "  validate-observability - Validate full observability stack (Prometheus + Loki + Tempo + Grafana)"

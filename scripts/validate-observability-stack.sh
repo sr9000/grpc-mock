@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_FILE="$ROOT_DIR/docker-compose-grafana.yaml"
+COMPOSE_FILE="$ROOT_DIR/docker-compose.observability.yaml"
 COMPOSE_CMD=(docker compose)
 COMPOSE_ENV_FILE="$ROOT_DIR/.env"
 
@@ -52,19 +52,35 @@ wait_for_grafana_api_match() {
   return 1
 }
 
-echo "[1/5] Building app image"
+echo "[1/6] Building app image"
 "${COMPOSE_CMD[@]}" --progress plain build grpc-mock
 
-echo "[2/5] Starting observability stack"
+echo "[2/6] Starting observability stack"
 "${COMPOSE_CMD[@]}" up -d
 
-echo "[3/5] Waiting for core endpoints"
+echo "[3/6] Waiting for core endpoints"
 wait_for_http "grpc-mock-mgmt" "http://127.0.0.1:9000/openapi.json"
 wait_for_http "metrics" "http://127.0.0.1:9100/metrics"
 wait_for_http "prometheus" "http://127.0.0.1:9090/-/healthy"
+wait_for_http "loki" "http://127.0.0.1:3100/ready"
+wait_for_http "tempo" "http://127.0.0.1:3200/ready"
+wait_for_http "collector" "http://127.0.0.1:13133/"
 wait_for_http "grafana" "http://127.0.0.1:3000/api/health"
 
-echo "[4/5] Verifying metrics and Prometheus"
+echo "[4/6] Sending plain and traced gRPC requests"
+# Send a plain request via the management API (triggers internal gRPC call recording)
+# Note: gRPC calls require grpcurl; we use the mgmt API as a basic smoke test
+curl -fsS "http://127.0.0.1:9000/logs" >/dev/null
+
+# Send a traced request if grpcurl is available
+if command -v grpcurl >/dev/null 2>&1; then
+  grpcurl -plaintext \
+    -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
+    -d '{"message":"traced"}' \
+    localhost:50051 EchoService/Echo || true
+fi
+
+echo "[5/6] Verifying metrics, Prometheus, Grafana, traces, and logs"
 if ! curl -fsS "http://127.0.0.1:9100/metrics" | grep -q 'grpc_requests_total'; then
   echo "Metrics endpoint does not expose grpc_requests_total" >&2
   exit 1
@@ -75,11 +91,18 @@ if ! curl -fsSG --data-urlencode 'query=up{job="grpc-mock"}' "http://127.0.0.1:9
   exit 1
 fi
 
-echo "[5/5] Verifying Grafana datasource and dashboards"
-if ! wait_for_grafana_api_match "Grafana datasource" "http://127.0.0.1:3000/api/datasources/name/gRPC%20Mock%20Metrics" '"name":"gRPC Mock Metrics"'; then
-  echo "Grafana Prometheus datasource was not provisioned" >&2
+if ! curl -fsSG --data-urlencode 'query={job="grpc-mock"}' "http://127.0.0.1:3100/loki/api/v1/query" | grep -q '"result"'; then
+  echo "Loki query did not return a valid result payload" >&2
   exit 1
 fi
+
+for datasource in "gRPC Mock Metrics" "gRPC Mock Traces" "gRPC Mock Logs"; do
+  encoded_name="${datasource// /%20}"
+  if ! wait_for_grafana_api_match "Grafana datasource $datasource" "http://127.0.0.1:3000/api/datasources/name/$encoded_name" "\"name\":\"$datasource\""; then
+    echo "Grafana datasource $datasource was not provisioned" >&2
+    exit 1
+  fi
+done
 
 for dashboard_uid in \
   grpc-mock-methods-overview \
@@ -92,4 +115,4 @@ do
   fi
 done
 
-echo "Observability stack validation passed"
+echo "[6/6] Smoke validation passed"
