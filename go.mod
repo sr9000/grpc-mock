@@ -4,8 +4,10 @@ go 1.25
 
 require (
 	github.com/caarlos0/env/v11 v11.3.1
+	github.com/go-chi/chi/v5 v5.3.0
 	github.com/google/wire v0.7.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/rs/zerolog v1.35.1
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/tools v0.40.0
 	google.golang.org/genproto v0.0.0-20260203192932-546029d2fa20
@@ -17,9 +19,10 @@ require (
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/go-chi/chi/v5 v5.3.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
