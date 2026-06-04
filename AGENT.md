@@ -1,0 +1,83 @@
+# AGENT notes for `grpc-mock`
+
+## Snapshot
+
+`grpc-mock` already has a solid core architecture:
+
+- contract-first generation from `.proto`,
+- generated code isolated in `internal/genproto/`,
+- hand-written logic isolated in `internal/stubs/`,
+- Wire-based registration,
+- management API for logs/docs,
+- Prometheus metrics server,
+- working Docker dev hot reload via `air`.
+
+## Strengths worth preserving
+
+1. **Simple pipeline mental model**
+    - `update-proto-pkg -> proto -> stub -> wire -> build`
+2. **Good local/dev feedback loop**
+    - `scripts/run-dev.sh` uses watcher-based regeneration/restart
+3. **Transport-native usefulness**
+    - reflection support is valuable for gRPC tooling
+4. **Safe-enough stub patching behavior**
+    - updater preserves existing method bodies on signature drift
+
+## Gaps versus `openapi-mock`
+
+1. **Management API is smaller and older**
+    - current shape centers on `/logs` + `/clear`
+    - lacks request-id filtering, reset semantics, richer docs discovery
+2. **Observability stack is lighter**
+    - Prometheus + Grafana only
+    - no repo-owned smoke validation for the full stack
+3. **Stub updater is under-tested**
+    - large monolithic `cmd/upd-stubs/main.go`
+    - no updater-focused tests were found
+    - no `--dry-run` / `--verbose` style UX
+4. **Generated logging style is older**
+    - logging is injected directly into generated methods instead of being centered in middleware/interceptors +
+      contextual logger patterns
+
+## Recommendations for unification work
+
+### Priority 1
+
+- Add a `compose-smoke` workflow comparable to `openapi-mock`.
+- Move toward `DELETE /logs`-style management semantics and keep `/clear` only as compatibility if needed.
+- Align README section order and terminology with `openapi-mock`.
+
+### Priority 2
+
+- Refactor `cmd/upd-stubs` into smaller files/packages.
+- Add tests for:
+    - signature migration,
+    - import alias repair,
+    - method append behavior,
+    - wire generation.
+- Add updater flags such as `--dry-run` and `--verbose`.
+
+### Priority 3
+
+- Decide how far to align observability with `openapi-mock`.
+- Likely good target:
+    - richer structured logs,
+    - stronger stack validation,
+    - optional traces only if they add clear value for gRPC usage.
+
+## Extra findings
+
+- Untracked cache directory observed: `scripts/__pycache__/`.
+    - Likely worth adding to `.gitignore`.
+- Metrics docs should stay aligned with code labels (`grpc_requests_total` currently records both `method` and `status`
+  in code).
+
+## Suggested role in the unified direction
+
+Let `grpc-mock` be the reference implementation for:
+
+- fast dev loop,
+- minimal conceptual workflow,
+- transport-specific gRPC ergonomics.
+
+But let it adopt the stronger operator/test/management patterns proven in `openapi-mock`.
