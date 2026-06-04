@@ -6,6 +6,7 @@ import (
 	"grpc-mock/internal/app"
 	"grpc-mock/pkg/metrics"
 	"grpc-mock/pkg/mgmt"
+	"grpc-mock/pkg/mm"
 	"grpc-mock/pkg/observability"
 	"grpc-mock/pkg/recorder"
 	"net"
@@ -262,6 +263,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 	// Create recorder for e2e testing
 	rec := recorder.New()
 
+	// Create context-values store for pre-seeding request context
+	contextValues := mm.NewStore()
+
 	// Create metrics if enabled
 	var metricsServer *metrics.Metrics
 	if cfg.EnableMetrics {
@@ -270,7 +274,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	var opts []grpc.ServerOption
 	// Always use recording interceptor for e2e testing
-	opts = append(opts, grpc.UnaryInterceptor(recordingInterceptor(rec, metricsServer, cfg.EnableLogging, baseLogger, cfg.RequestIDHeaders, cfg.RequestIDResponseHeader)))
+	opts = append(opts, grpc.UnaryInterceptor(recordingInterceptor(rec, metricsServer, cfg.EnableLogging, baseLogger, cfg.RequestIDHeaders, cfg.RequestIDResponseHeader, contextValues)))
 	grpcServer := grpc.NewServer(opts...)
 
 	if _, err := app.InitializeApp(grpcServer, cfg.EnableLogging); err != nil {
@@ -284,7 +288,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	// Start management server if enabled
 	var mgmtServer *mgmt.Server
 	if cfg.EnableMgmt {
-		mgmtServer = mgmt.New(rec, cfg.MgmtPort)
+		mgmtServer = mgmt.New(rec, cfg.MgmtPort, mgmt.WithContextValues(contextValues))
 		if err := mgmtServer.Start(); err != nil {
 			return fmt.Errorf("failed to start management server: %w", err)
 		}
@@ -334,7 +338,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogging bool, baseLogger zerolog.Logger, requestIDHeaders string, requestIDResponseHeader string) grpc.UnaryServerInterceptor {
+func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogging bool, baseLogger zerolog.Logger, requestIDHeaders string, requestIDResponseHeader string, contextValues *mm.Store) grpc.UnaryServerInterceptor {
 	allowedHeaders := observability.NormalizeHeaderList(requestIDHeaders, observability.DefaultRequestIDHeaders)
 	tracer := otel.Tracer("grpc-mock")
 
@@ -397,6 +401,11 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 			reqLogger = reqLogger.With().Str("trace_id", traceID).Logger()
 		}
 		ctx = observability.WithLogger(ctx, reqLogger)
+
+		// Inject pre-seeded context values from the store into the request context.
+		if seeded := contextValues.Get(reqID); len(seeded) > 0 {
+			ctx = mm.WithValues(ctx, seeded)
+		}
 
 		if enableLogging {
 			reqLogger.Info().Msg("gRPC request started")

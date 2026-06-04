@@ -4,12 +4,14 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"grpc-mock/pkg/mm"
 	"grpc-mock/pkg/recorder"
 )
 
@@ -52,17 +54,19 @@ const swaggerUIHTML = `<!DOCTYPE html>
 
 // Server is the management HTTP server for e2e testing
 type Server struct {
-	recorder *recorder.Recorder
-	reset    func(context.Context) error
-	server   *http.Server
-	port     string
+	recorder      *recorder.Recorder
+	contextValues *mm.Store
+	reset         func(context.Context) error
+	server        *http.Server
+	port          string
 }
 
 // New creates a new management server
 func New(rec *recorder.Recorder, port string, opts ...Option) *Server {
 	s := &Server{
-		recorder: rec,
-		port:     port,
+		recorder:      rec,
+		port:          port,
+		contextValues: mm.NewStore(),
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -78,6 +82,18 @@ func WithReset(fn func(context.Context) error) Option {
 	return func(s *Server) {
 		s.reset = fn
 	}
+}
+
+// WithContextValues sets the context-values store.
+func WithContextValues(store *mm.Store) Option {
+	return func(s *Server) {
+		s.contextValues = store
+	}
+}
+
+// ContextValues returns the context-values store (for wiring into the interceptor).
+func (s *Server) ContextValues() *mm.Store {
+	return s.contextValues
 }
 
 // Start starts the management HTTP server
@@ -103,6 +119,17 @@ func (s *Server) router() http.Handler {
 	r.Get("/logs", s.handleLogs)
 	r.Delete("/logs", s.handleDeleteLogs)
 	r.Get("/logs/{request_id}", s.handleLogsByRequestID)
+
+	// Context-values endpoints
+	r.Get("/context-values", s.handleGetContextValues)
+	r.Put("/context-values", s.handlePutContextValues)
+	r.Patch("/context-values", s.handlePatchContextValues)
+	r.Delete("/context-values", s.handleDeleteContextValues)
+
+	r.Get("/context-values/{request_id}", s.handleGetContextValuesByRequestID)
+	r.Put("/context-values/{request_id}", s.handlePutContextValuesByRequestID)
+	r.Patch("/context-values/{request_id}", s.handlePatchContextValuesByRequestID)
+	r.Delete("/context-values/{request_id}", s.handleDeleteContextValuesByRequestID)
 
 	// Deprecated: use DELETE /logs instead
 	r.Post("/clear", s.handleClear)
@@ -205,4 +232,121 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(payload)
+}
+
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]string{"error": message})
+}
+
+// --- Context-values handlers ---
+
+func (s *Server) handleGetContextValues(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, s.contextValues.GetAll())
+}
+
+func (s *Server) handleGetContextValuesByRequestID(w http.ResponseWriter, r *http.Request) {
+	requestID := chi.URLParam(r, "request_id")
+	values := s.contextValues.Get(requestID)
+	if values == nil {
+		values = map[string]any{}
+	}
+	writeJSON(w, http.StatusOK, values)
+}
+
+func (s *Server) handlePutContextValues(w http.ResponseWriter, r *http.Request) {
+	data, ok := s.decodeStoreBody(w, r)
+	if !ok {
+		return
+	}
+	s.contextValues.ReplaceAll(data)
+	writeJSON(w, http.StatusOK, data)
+}
+
+func (s *Server) handlePutContextValuesByRequestID(w http.ResponseWriter, r *http.Request) {
+	requestID := chi.URLParam(r, "request_id")
+	data, ok := s.decodeObjectBody(w, r)
+	if !ok {
+		return
+	}
+	s.contextValues.Replace(requestID, data)
+	writeJSON(w, http.StatusOK, data)
+}
+
+func (s *Server) handlePatchContextValues(w http.ResponseWriter, r *http.Request) {
+	data, ok := s.decodeStoreBody(w, r)
+	if !ok {
+		return
+	}
+	s.contextValues.MergeAll(data)
+	writeJSON(w, http.StatusOK, s.contextValues.GetAll())
+}
+
+func (s *Server) handlePatchContextValuesByRequestID(w http.ResponseWriter, r *http.Request) {
+	requestID := chi.URLParam(r, "request_id")
+	data, ok := s.decodeObjectBody(w, r)
+	if !ok {
+		return
+	}
+	s.contextValues.Merge(requestID, data)
+	writeJSON(w, http.StatusOK, s.contextValues.Get(requestID))
+}
+
+func (s *Server) handleDeleteContextValues(w http.ResponseWriter, _ *http.Request) {
+	s.contextValues.Clear()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
+}
+
+func (s *Server) handleDeleteContextValuesByRequestID(w http.ResponseWriter, r *http.Request) {
+	requestID := chi.URLParam(r, "request_id")
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	if len(body) == 0 {
+		s.contextValues.Delete(requestID)
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+		return
+	}
+	var req struct {
+		Keys []string `json:"keys"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if len(req.Keys) == 0 {
+		s.contextValues.Delete(requestID)
+	} else {
+		s.contextValues.DeleteKeys(requestID, req.Keys)
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (s *Server) decodeObjectBody(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read request body")
+		return nil, false
+	}
+	data, err := mm.DecodeObject(body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return nil, false
+	}
+	return data, true
+}
+
+func (s *Server) decodeStoreBody(w http.ResponseWriter, r *http.Request) (map[string]map[string]any, bool) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read request body")
+		return nil, false
+	}
+	data, err := mm.DecodeStore(body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return nil, false
+	}
+	return data, true
 }

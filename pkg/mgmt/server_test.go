@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"grpc-mock/pkg/mm"
 	"grpc-mock/pkg/recorder"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -555,4 +557,367 @@ func containsHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// --- Context-values tests ---
+
+func TestHandleGetContextValuesEmpty(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000")
+	r := s.router()
+
+	req := httptest.NewRequest(http.MethodGet, "/context-values", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("Expected empty map, got %v", result)
+	}
+}
+
+func TestHandlePutContextValues(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000")
+	r := s.router()
+
+	payload := `{"req-1": {"key1": "val1", "key2": 42}}`
+	req := httptest.NewRequest(http.MethodPut, "/context-values", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Verify via GET
+	req = httptest.NewRequest(http.MethodGet, "/context-values", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	resp = w.Result()
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if result["req-1"]["key1"] != "val1" {
+		t.Errorf("Expected key1=val1, got %v", result["req-1"]["key1"])
+	}
+}
+
+func TestHandlePatchContextValues(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000")
+	r := s.router()
+
+	// Seed initial data
+	payload := `{"req-1": {"key1": "val1"}}`
+	req := httptest.NewRequest(http.MethodPut, "/context-values", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	// Patch with new key
+	payload = `{"req-1": {"key2": "val2"}}`
+	req = httptest.NewRequest(http.MethodPatch, "/context-values", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if result["req-1"]["key1"] != "val1" {
+		t.Errorf("Expected key1=val1 after patch, got %v", result["req-1"]["key1"])
+	}
+	if result["req-1"]["key2"] != "val2" {
+		t.Errorf("Expected key2=val2 after patch, got %v", result["req-1"]["key2"])
+	}
+}
+
+func TestHandleDeleteContextValues(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000")
+	r := s.router()
+
+	// Seed data
+	payload := `{"req-1": {"key1": "val1"}}`
+	req := httptest.NewRequest(http.MethodPut, "/context-values", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	// Delete all
+	req = httptest.NewRequest(http.MethodDelete, "/context-values", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Verify empty
+	req = httptest.NewRequest(http.MethodGet, "/context-values", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	resp = w.Result()
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("Expected empty map after delete, got %v", result)
+	}
+}
+
+func TestHandleGetContextValuesByRequestID(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000")
+	r := s.router()
+
+	// Seed data
+	payload := `{"req-1": {"key1": "val1"}, "req-2": {"key2": "val2"}}`
+	req := httptest.NewRequest(http.MethodPut, "/context-values", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	// Get by request_id
+	req = httptest.NewRequest(http.MethodGet, "/context-values/req-1", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if result["key1"] != "val1" {
+		t.Errorf("Expected key1=val1, got %v", result["key1"])
+	}
+}
+
+func TestHandlePutContextValuesByRequestID(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000")
+	r := s.router()
+
+	payload := `{"key1": "val1"}`
+	req := httptest.NewRequest(http.MethodPut, "/context-values/req-1", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Verify via GET by request_id
+	req = httptest.NewRequest(http.MethodGet, "/context-values/req-1", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	resp = w.Result()
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if result["key1"] != "val1" {
+		t.Errorf("Expected key1=val1, got %v", result["key1"])
+	}
+}
+
+func TestHandlePatchContextValuesByRequestID(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000")
+	r := s.router()
+
+	// Seed
+	payload := `{"key1": "val1"}`
+	req := httptest.NewRequest(http.MethodPut, "/context-values/req-1", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	// Patch
+	payload = `{"key2": "val2"}`
+	req = httptest.NewRequest(http.MethodPatch, "/context-values/req-1", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if result["key1"] != "val1" {
+		t.Errorf("Expected key1=val1 after patch, got %v", result["key1"])
+	}
+	if result["key2"] != "val2" {
+		t.Errorf("Expected key2=val2 after patch, got %v", result["key2"])
+	}
+}
+
+func TestHandleDeleteContextValuesByRequestID(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000")
+	r := s.router()
+
+	// Seed
+	payload := `{"req-1": {"key1": "val1"}, "req-2": {"key2": "val2"}}`
+	req := httptest.NewRequest(http.MethodPut, "/context-values", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	// Delete by request_id (no body = delete entire request_id)
+	req = httptest.NewRequest(http.MethodDelete, "/context-values/req-1", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Verify req-1 is gone but req-2 remains
+	req = httptest.NewRequest(http.MethodGet, "/context-values", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	resp = w.Result()
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if _, ok := result["req-1"]; ok {
+		t.Error("Expected req-1 to be deleted")
+	}
+	if result["req-2"]["key2"] != "val2" {
+		t.Errorf("Expected req-2 key2=val2, got %v", result["req-2"]["key2"])
+	}
+}
+
+func TestHandleDeleteContextValuesByRequestIDWithKeys(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000")
+	r := s.router()
+
+	// Seed via PUT /context-values/req-1 (flat object, not nested)
+	payload := `{"key1": "val1", "key2": "val2", "key3": "val3"}`
+	req := httptest.NewRequest(http.MethodPut, "/context-values/req-1", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	// Delete specific keys
+	payload = `{"keys": ["key1", "key3"]}`
+	req = httptest.NewRequest(http.MethodDelete, "/context-values/req-1", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Verify only key2 remains
+	req = httptest.NewRequest(http.MethodGet, "/context-values/req-1", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	resp = w.Result()
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if _, ok := result["key1"]; ok {
+		t.Error("Expected key1 to be deleted")
+	}
+	if result["key2"] != "val2" {
+		t.Errorf("Expected key2=val2, got %v", result["key2"])
+	}
+	if _, ok := result["key3"]; ok {
+		t.Error("Expected key3 to be deleted")
+	}
+}
+
+func TestContextValuesSharedStore(t *testing.T) {
+	// Verify that WithContextValues shares the same store instance
+	rec := recorder.New()
+	store := mm.NewStore()
+	store.Replace("shared-req", map[string]any{"shared_key": "shared_val"})
+
+	s := New(rec, "9000", WithContextValues(store))
+	r := s.router()
+
+	// GET should see the pre-seeded data
+	req := httptest.NewRequest(http.MethodGet, "/context-values/shared-req", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if result["shared_key"] != "shared_val" {
+		t.Errorf("Expected shared_key=shared_val, got %v", result["shared_key"])
+	}
 }
