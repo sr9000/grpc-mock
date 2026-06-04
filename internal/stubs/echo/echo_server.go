@@ -3,9 +3,9 @@ package echo
 import (
 	"context"
 	echopb "grpc-mock/internal/genproto/echo"
-	"grpc-mock/pkg/ctxkeys"
-	"log"
+	"grpc-mock/pkg/observability"
 
+	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 )
 
@@ -24,8 +24,12 @@ func NewEchoServer(server grpc.ServiceRegistrar, enableLogging bool) *EchoServer
 
 func (s *EchoServer) Echo(ctx context.Context, myargRequest *echopb.EchoRequest) (*echopb.EchoResponse, error) {
 	if s.EnableLogging {
-		reqID, _ := ctx.Value(ctxkeys.RequestID{}).(string)
-		log.Printf("[req_id=%s] [EchoServer] stub Echo called with: %+v", reqID, myargRequest)
+		logger := observability.Logger(ctx, zerolog.Nop())
+		logger.Info().
+			Str("stub", "EchoServer").
+			Str("method", "Echo").
+			Interface("request", myargRequest).
+			Msg("stub called")
 	}
 
 	return &echopb.EchoResponse{

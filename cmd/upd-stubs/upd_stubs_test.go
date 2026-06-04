@@ -181,14 +181,14 @@ func TestNewFileImports(t *testing.T) {
 	if _, exists := imports["context"]; !exists {
 		t.Fatal("expected context import")
 	}
-	if _, exists := imports["log"]; !exists {
-		t.Fatal("expected log import")
+	if _, exists := imports["grpc-mock/pkg/observability"]; !exists {
+		t.Fatal("expected observability import")
+	}
+	if _, exists := imports["github.com/rs/zerolog"]; !exists {
+		t.Fatal("expected zerolog import")
 	}
 	if _, exists := imports["google.golang.org/grpc"]; !exists {
 		t.Fatal("expected grpc import")
-	}
-	if _, exists := imports["grpc-mock/pkg/ctxkeys"]; !exists {
-		t.Fatal("expected ctxkeys import")
 	}
 	if alias, exists := imports["grpc-mock/internal/genproto/echo"]; !exists {
 		t.Fatal("expected genproto/echo import")

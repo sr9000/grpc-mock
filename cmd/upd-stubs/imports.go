@@ -18,10 +18,10 @@ import (
 // newFileImports creates a shared imports map for generating a stub file.
 func newFileImports(genprotoPkgPath string) map[string]string {
 	imports := map[string]string{
-		"context":                "",
-		"log":                    "",
-		"google.golang.org/grpc": "",
-		"grpc-mock/pkg/ctxkeys":  "",
+		"context":                     "",
+		"google.golang.org/grpc":      "",
+		"grpc-mock/pkg/observability": "",
+		"github.com/rs/zerolog":       "",
 	}
 
 	alias := genprotoPackageAlias(genprotoPkgPath)

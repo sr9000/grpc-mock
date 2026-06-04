@@ -524,22 +524,18 @@ func generateMethod(structName, methodName string, sig *types.Signature, imports
 	fmt.Fprintf(&buf, " {\n")
 
 	fmt.Fprintf(&buf, "\tif s.EnableLogging {\n")
-	fmt.Fprintf(&buf, "\t\treqID, _ := ctx.Value(ctxkeys.RequestID{}).(string)\n")
+	fmt.Fprintf(&buf, "\t\tlogger := observability.Logger(ctx, zerolog.Nop())\n")
+	fmt.Fprintf(&buf, "\t\tlogger.Info().\n")
+	fmt.Fprintf(&buf, "\t\t\tStr(\"stub\", %q).\n", structName)
+	fmt.Fprintf(&buf, "\t\t\tStr(\"method\", %q).\n", methodName)
 
 	if len(logParamNames) > 0 {
-		formatParts := make([]string, len(logParamNames))
-		for i := range formatParts {
-			formatParts[i] = "%+v"
+		for _, pName := range logParamNames {
+			fmt.Fprintf(&buf, "\t\t\tInterface(%q, %s).\n", pName, pName)
 		}
-		formatStr := strings.Join(formatParts, ", ")
-		argsStr := strings.Join(logParamNames, ", ")
-
-		fmt.Fprintf(&buf, "\t\tlog.Printf(\"[req_id=%%s] [%s] stub %s called with: %s\", reqID, %s)\n",
-			structName, methodName, formatStr, argsStr)
-	} else {
-		fmt.Fprintf(&buf, "\t\tlog.Printf(\"[req_id=%%s] [%s] stub %s called\", reqID)\n",
-			structName, methodName)
 	}
+
+	fmt.Fprintf(&buf, "\t\t\tMsg(\"stub called\")\n")
 	fmt.Fprintf(&buf, "\t}\n")
 
 	if results.Len() > 0 {

@@ -7,12 +7,12 @@ import (
 	importmepb "grpc-mock/internal/genproto/complex/importme"
 	modelspb "grpc-mock/internal/genproto/complex/models"
 	servicepb "grpc-mock/internal/genproto/complex/service"
-	"grpc-mock/pkg/ctxkeys"
+	"grpc-mock/pkg/observability"
 	"grpc-mock/pkg/ptrtools"
-	"log"
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
 	"google.golang.org/genproto/googleapis/type/date"
 	"google.golang.org/grpc"
 )
@@ -32,8 +32,12 @@ func NewComplexServer(server grpc.ServiceRegistrar, enableLogging bool) *Complex
 
 func (s *ComplexServer) GetModel(ctx context.Context, req *modelspb.ServiceModel) (*modelspb.ServiceModel, error) {
 	if s.EnableLogging {
-		reqID, _ := ctx.Value(ctxkeys.RequestID{}).(string)
-		log.Printf("[req_id=%s] [ComplexServer] stub GetModel called with: %+v", reqID, req)
+		logger := observability.Logger(ctx, zerolog.Nop())
+		logger.Info().
+			Str("stub", "ComplexServer").
+			Str("method", "GetModel").
+			Interface("request", req).
+			Msg("stub called")
 	}
 
 	if req.Data == nil {
@@ -54,8 +58,12 @@ func (s *ComplexServer) GetModel(ctx context.Context, req *modelspb.ServiceModel
 
 func (s *ComplexServer) GetOldModel(ctx context.Context, req *deprecatedmodelspb.ServiceModel) (*deprecatedmodelspb.ServiceModel, error) {
 	if s.EnableLogging {
-		reqID, _ := ctx.Value(ctxkeys.RequestID{}).(string)
-		log.Printf("[req_id=%s] [ComplexServer] stub GetOldModel called with: %+v", reqID, req)
+		logger := observability.Logger(ctx, zerolog.Nop())
+		logger.Info().
+			Str("stub", "ComplexServer").
+			Str("method", "GetOldModel").
+			Interface("request", req).
+			Msg("stub called")
 	}
 
 	if req.Data == nil {
@@ -84,8 +92,12 @@ func time2date(t time.Time) date.Date {
 
 func (s *ComplexServer) DoNothing(ctx context.Context, req *importmepb.NothingIn) (*importmepb.NothingOut, error) {
 	if s.EnableLogging {
-		reqID, _ := ctx.Value(ctxkeys.RequestID{}).(string)
-		log.Printf("[req_id=%s] [ComplexServer] stub DoNothing called with: %+v", reqID, req)
+		logger := observability.Logger(ctx, zerolog.Nop())
+		logger.Info().
+			Str("stub", "ComplexServer").
+			Str("method", "DoNothing").
+			Interface("request", req).
+			Msg("stub called")
 	}
 	return &importmepb.NothingOut{}, nil
 }
