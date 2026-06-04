@@ -348,6 +348,11 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 
 		ctx, reqID, span, reqLogger := prepareContext(ctx, info.FullMethod, allowedHeaders, requestIDResponseHeader, contextValues, tracer, baseLogger)
 
+		if m != nil {
+			m.InFlightInc(info.FullMethod)
+			defer m.InFlightDec(info.FullMethod)
+		}
+
 		if enableLogging {
 			reqLogger.Info().Msg("gRPC request started")
 		}
@@ -407,6 +412,11 @@ func streamingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 
 		// Wrap the stream so the context is enriched.
 		wrapped := &contextStream{ServerStream: ss, ctx: ctx}
+
+		if m != nil {
+			m.InFlightInc(info.FullMethod)
+			defer m.InFlightDec(info.FullMethod)
+		}
 
 		if enableLogging {
 			reqLogger.Info().Str("stream_type", streamType(info)).Msg("gRPC stream started")

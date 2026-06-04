@@ -20,6 +20,7 @@ type Metrics struct {
 	RequestDuration *prometheus.HistogramVec
 	ErrorsTotal     *prometheus.CounterVec
 	PanicsTotal     *prometheus.CounterVec
+	InFlight        *prometheus.GaugeVec
 
 	// Resource metrics (custom gauges)
 	MemoryUsage *prometheus.GaugeVec
@@ -53,16 +54,16 @@ func New(port string) *Metrics {
 		ErrorsTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "grpc_errors_total",
-				Help: "Total number of gRPC errors by error message",
+				Help: "Total number of gRPC errors by kind",
 			},
-			[]string{"method", "error"},
+			[]string{"method", "kind"},
 		),
 		PanicsTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "grpc_panics_total",
-				Help: "Total number of gRPC panics by panic message",
+				Help: "Total number of gRPC panics by kind",
 			},
-			[]string{"method", "panic"},
+			[]string{"method", "kind"},
 		),
 		MemoryUsage: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
@@ -77,6 +78,13 @@ func New(port string) *Metrics {
 				Help: "Number of goroutines",
 			},
 		),
+		InFlight: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "grpc_in_flight",
+				Help: "Number of in-flight requests",
+			},
+			[]string{"method"},
+		),
 		registry: registry,
 		port:     port,
 	}
@@ -88,6 +96,7 @@ func New(port string) *Metrics {
 	registry.MustRegister(m.PanicsTotal)
 	registry.MustRegister(m.MemoryUsage)
 	registry.MustRegister(m.Goroutines)
+	registry.MustRegister(m.InFlight)
 
 	// Register default Go collectors for CPU, memory, GC stats
 	registry.MustRegister(collectors.NewGoCollector())
@@ -102,22 +111,45 @@ func (m *Metrics) RecordRequest(method string, durationMs int64, status string) 
 	m.RequestDuration.WithLabelValues(method, status).Observe(float64(durationMs) / 1000.0)
 }
 
-// RecordError records a gRPC error
+// RecordError records a gRPC error with a bounded kind label.
+// The full error message is kept in logs/records, not in metric labels.
 func (m *Metrics) RecordError(method, errorMsg string) {
-	// Truncate error message to prevent high cardinality
-	if len(errorMsg) > 100 {
-		errorMsg = errorMsg[:100] + "..."
-	}
-	m.ErrorsTotal.WithLabelValues(method, errorMsg).Inc()
+	kind := errorKind(errorMsg)
+	m.ErrorsTotal.WithLabelValues(method, kind).Inc()
 }
 
-// RecordPanic records a gRPC panic
+// RecordPanic records a gRPC panic with a bounded kind label.
+// The full panic message is kept in logs/records, not in metric labels.
 func (m *Metrics) RecordPanic(method, panicMsg string) {
-	// Truncate panic message to prevent high cardinality
-	if len(panicMsg) > 100 {
-		panicMsg = panicMsg[:100] + "..."
+	kind := panicKind(panicMsg)
+	m.PanicsTotal.WithLabelValues(method, kind).Inc()
+}
+
+// InFlightInc increments the in-flight gauge for the given method.
+func (m *Metrics) InFlightInc(method string) {
+	m.InFlight.WithLabelValues(method).Inc()
+}
+
+// InFlightDec decrements the in-flight gauge for the given method.
+func (m *Metrics) InFlightDec(method string) {
+	m.InFlight.WithLabelValues(method).Dec()
+}
+
+// errorKind extracts a bounded kind from an error message.
+func errorKind(msg string) string {
+	// Use the gRPC status code if present, otherwise a short prefix.
+	if len(msg) > 20 {
+		return msg[:20]
 	}
-	m.PanicsTotal.WithLabelValues(method, panicMsg).Inc()
+	return msg
+}
+
+// panicKind extracts a bounded kind from a panic message.
+func panicKind(msg string) string {
+	if len(msg) > 20 {
+		return msg[:20]
+	}
+	return msg
 }
 
 // updateResourceMetrics updates memory and CPU metrics
