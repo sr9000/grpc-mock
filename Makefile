@@ -36,7 +36,7 @@ wire:
 	@echo
 	@echo "===================="
 	@echo "Updating wire..."
-	go run github.com/google/wire/cmd/wire@latest gen ./internal/app
+	go tool wire gen ./internal/app
 
 # Build the server
 build:

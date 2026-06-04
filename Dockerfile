@@ -13,10 +13,9 @@ RUN apk add --no-cache bash python3 make git build-base protobuf protobuf-dev
 
 # 2. Install Go Global Tools
 #    - protoc plugins for generation
-#    - wire for dependency injection
+#    - wire is installed via go tool directive (go.mod)
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
-    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest && \
-    go install github.com/google/wire/cmd/wire@latest
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 WORKDIR /app
 
