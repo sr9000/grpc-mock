@@ -2,7 +2,8 @@
 
 ## Contracts
 
-This repo implements the contracts defined in `../CONTRACTS.md` (workspace root). See that file for the unified CLI, Management API, Recorder JSON, Metrics, Make target, Stub Updater, and Docs layout contracts.
+This repo implements the contracts defined in `../CONTRACTS.md` (workspace root). See that file for the unified CLI,
+Management API, Recorder JSON, Metrics, Make target, Stub Updater, and Docs layout contracts.
 
 ## Snapshot
 
