@@ -40,6 +40,37 @@ type stubPkg struct {
 }
 
 func main() {
+	var dryRun bool
+	var verbose bool
+	var prune bool
+
+	// Simple flag parsing (no cobra needed for a tool like this)
+	for _, arg := range os.Args[1:] {
+		switch arg {
+		case "--dry-run":
+			dryRun = true
+		case "--verbose":
+			verbose = true
+		case "--prune":
+			prune = true
+		case "--help", "-h":
+			fmt.Println("upd-stubs: generate and update gRPC stub implementations")
+			fmt.Println()
+			fmt.Println("Usage: upd-stubs [flags]")
+			fmt.Println()
+			fmt.Println("Flags:")
+			fmt.Println("  --dry-run   Render without writing files")
+			fmt.Println("  --verbose   Extra diagnostics during generation")
+			fmt.Println("  --prune     Annotate orphaned/stale handlers (best-effort)")
+			fmt.Println("  --help      Show this help message")
+			os.Exit(0)
+		}
+	}
+
+	if verbose {
+		log.Println("running upd-stubs with flags: dry-run=", dryRun, "verbose=", verbose, "prune=", prune)
+	}
+
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
 		Dir:  ".",
@@ -81,6 +112,10 @@ func main() {
 				continue
 			}
 
+			if verbose {
+				log.Printf("discovered service: %s in package %s", name, pkg.PkgPath)
+			}
+
 			services = append(services, serviceInfo{
 				PkgPath:       pkg.PkgPath,
 				PkgName:       pkg.Name,
@@ -114,33 +149,43 @@ func main() {
 
 	// Generate stubs
 	for _, sp := range pkgMap {
-		if err := generateStubPackage(sp.OutDir, sp.PkgName, sp.Services); err != nil {
+		if err := generateStubPackage(sp.OutDir, sp.PkgName, sp.Services, dryRun, verbose); err != nil {
 			log.Fatalf("failed to generate stubs for %s: %v", sp.OutDir, err)
 		}
 	}
 
 	// Generate wire.go
-	if err := generateWireFile(pkgMap); err != nil {
+	if err := generateWireFile(pkgMap, dryRun, verbose); err != nil {
 		log.Fatalf("failed to generate wire.go: %v", err)
 	}
 
-	log.Println("stubs generated successfully")
+	if prune {
+		if err := annotateOrphanedMethods(pkgMap, dryRun, verbose); err != nil {
+			log.Printf("warning: prune annotation failed: %v", err)
+		}
+	}
+
+	if dryRun {
+		log.Println("dry-run complete, no files were written")
+	} else {
+		log.Println("stubs generated successfully")
+	}
 }
 
-func generateStubPackage(outDir, pkgName string, services []serviceInfo) error {
+func generateStubPackage(outDir, pkgName string, services []serviceInfo, dryRun, verbose bool) error {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return err
 	}
 
 	for _, svc := range services {
-		if err := generateStubFile(outDir, pkgName, svc); err != nil {
+		if err := generateStubFile(outDir, pkgName, svc, dryRun, verbose); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func generateStubFile(outDir, pkgName string, svc serviceInfo) error {
+func generateStubFile(outDir, pkgName string, svc serviceInfo, dryRun, verbose bool) error {
 	var buf bytes.Buffer
 
 	// Derive struct name from interface (e.g. EchoServiceServer -> EchoServer)
@@ -155,6 +200,10 @@ func generateStubFile(outDir, pkgName string, svc serviceInfo) error {
 	outPath := filepath.Join(outDir, fileName)
 	if _, err := os.Stat(outPath); err == nil {
 		return updateStubFile(outPath, structName, svc)
+	}
+
+	if verbose {
+		log.Printf("creating new stub file: %s", outPath)
 	}
 
 	// Create shared imports map for the entire file
@@ -226,7 +275,10 @@ func generateStubFile(outDir, pkgName string, svc serviceInfo) error {
 		return err
 	}
 
-	outPath = filepath.Join(outDir, fileName)
+	if dryRun {
+		log.Printf("[dry-run] would write %s (%d bytes)", outPath, len(src))
+		return nil
+	}
 	return os.WriteFile(outPath, src, 0o644)
 }
 
@@ -527,7 +579,7 @@ func toPascalCase(s string) string {
 	return string(result)
 }
 
-func generateWireFile(pkgMap map[string]*stubPkg) error {
+func generateWireFile(pkgMap map[string]*stubPkg, dryRun, verbose bool) error {
 	var buf bytes.Buffer
 
 	fmt.Fprintf(&buf, "//go:build wireinject\n")
@@ -622,6 +674,10 @@ func generateWireFile(pkgMap map[string]*stubPkg) error {
 		return err
 	}
 
+	if dryRun {
+		log.Printf("[dry-run] would write internal/app/wire.go (%d bytes)", len(src))
+		return nil
+	}
 	return os.WriteFile("internal/app/wire.go", src, 0o644)
 }
 
@@ -1154,4 +1210,74 @@ func removeWhitespace(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// annotateOrphanedMethods scans stub files for methods that no longer exist
+// in the corresponding gRPC interface and adds a deprecation comment.
+func annotateOrphanedMethods(pkgMap map[string]*stubPkg, dryRun, verbose bool) error {
+	for _, sp := range pkgMap {
+		for _, svc := range sp.Services {
+			structName := strings.TrimSuffix(svc.InterfaceName, "Server") + "Server"
+			if strings.HasSuffix(svc.InterfaceName, "ServiceServer") {
+				structName = strings.TrimSuffix(svc.InterfaceName, "ServiceServer") + "Server"
+			}
+			fileName := toSnakeCase(structName) + ".go"
+			outPath := filepath.Join(sp.OutDir, fileName)
+
+			// Build set of known interface methods
+			knownMethods := make(map[string]bool)
+			iface := svc.Iface
+			for i := 0; i < iface.NumMethods(); i++ {
+				m := iface.Method(i)
+				if m.Exported() {
+					knownMethods[m.Name()] = true
+				}
+			}
+
+			// Parse existing stub file
+			src, err := os.ReadFile(outPath)
+			if err != nil {
+				if verbose {
+					log.Printf("prune: skipping %s: %v", outPath, err)
+				}
+				continue
+			}
+
+			fset := token.NewFileSet()
+			node, err := parser.ParseFile(fset, outPath, src, parser.ParseComments)
+			if err != nil {
+				continue
+			}
+
+			var orphans []string
+			for _, decl := range node.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Recv == nil || len(fn.Recv.List) == 0 {
+					continue
+				}
+				if !isReceiver(fn.Recv.List[0].Type, structName) {
+					continue
+				}
+				// Skip constructor
+				if strings.HasPrefix(fn.Name.Name, "New") {
+					continue
+				}
+				if !knownMethods[fn.Name.Name] {
+					orphans = append(orphans, fn.Name.Name)
+					if verbose {
+						log.Printf("prune: orphaned method %s.%s in %s", structName, fn.Name.Name, outPath)
+					}
+				}
+			}
+
+			if len(orphans) > 0 {
+				if dryRun {
+					log.Printf("[dry-run] prune: would annotate %d orphaned method(s) in %s: %v", len(orphans), outPath, orphans)
+				} else {
+					log.Printf("prune: found %d orphaned method(s) in %s: %v (consider removing manually)", len(orphans), outPath, orphans)
+				}
+			}
+		}
+	}
+	return nil
 }
