@@ -31,7 +31,7 @@ Management API, Recorder JSON, Metrics, Make target, Stub Updater, and Docs layo
 ## Gaps versus `openapi-mock`
 
 1. **Management API is smaller and older**
-    - current shape centers on `/logs` + `/clear`
+    - current shape centers on `/logs` + `DELETE /logs`
     - lacks request-id filtering, reset semantics, richer docs discovery
 2. **Observability stack is lighter**
     - Prometheus + Grafana only
@@ -49,7 +49,7 @@ Management API, Recorder JSON, Metrics, Make target, Stub Updater, and Docs layo
 ### Priority 1
 
 - Add a `compose-smoke` workflow comparable to `openapi-mock`.
-- Move toward `DELETE /logs`-style management semantics and keep `/clear` only as compatibility if needed.
+- Move toward `DELETE /logs`-style management semantics (`/clear` routes have been removed).
 - Align README section order and terminology with `openapi-mock`.
 
 ### Priority 2

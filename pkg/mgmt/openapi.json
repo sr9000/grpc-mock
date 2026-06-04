@@ -87,44 +87,6 @@
         }
       }
     },
-    "/clear": {
-      "post": {
-        "summary": "Clear all recorded gRPC calls (deprecated)",
-        "description": "Deprecated: use DELETE /logs instead. Removes all recorded gRPC calls from memory.",
-        "operationId": "clearLogs",
-        "deprecated": true,
-        "responses": {
-          "200": {
-            "description": "Successfully cleared logs",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ClearedResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "summary": "Clear all recorded gRPC calls (deprecated)",
-        "description": "Deprecated: use DELETE /logs instead. Removes all recorded gRPC calls from memory.",
-        "operationId": "clearLogsDelete",
-        "deprecated": true,
-        "responses": {
-          "200": {
-            "description": "Successfully cleared logs",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ClearedResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/reset": {
       "post": {
         "summary": "Soft reset",

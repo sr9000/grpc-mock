@@ -143,10 +143,6 @@ func (s *Server) router() http.Handler {
 	r.Patch("/context-values/{request_id}", s.handlePatchContextValuesByRequestID)
 	r.Delete("/context-values/{request_id}", s.handleDeleteContextValuesByRequestID)
 
-	// Deprecated: use DELETE /logs instead
-	r.Post("/clear", s.handleClear)
-	r.Delete("/clear", s.handleClear)
-
 	r.Post("/reset", s.handleReset)
 
 	// Service docs discovery endpoints
@@ -197,12 +193,6 @@ func (s *Server) handleLogsByRequestID(w http.ResponseWriter, r *http.Request) {
 
 // handleDeleteLogs clears all recorded gRPC calls (Core endpoint)
 func (s *Server) handleDeleteLogs(w http.ResponseWriter, r *http.Request) {
-	s.recorder.Clear()
-	writeJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
-}
-
-// handleClear removes all recorded gRPC calls (deprecated: use DELETE /logs)
-func (s *Server) handleClear(w http.ResponseWriter, r *http.Request) {
 	s.recorder.Clear()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
 }

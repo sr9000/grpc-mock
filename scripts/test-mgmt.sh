@@ -3,7 +3,6 @@
 # Test script for gRPC mock management server
 # This script validates:
 # - Management server Core endpoints (/logs, /logs/{request_id}, DELETE /logs, /reset, /doc, /openapi.json)
-# - Deprecated endpoints (/clear) for backward compatibility
 # - gRPC mock server with echo service
 # - Recording and clearing of gRPC calls
 
@@ -386,38 +385,9 @@ test_reset() {
     fi
 }
 
-# Test 9: Clear logs using deprecated /clear endpoint
+# Test 9: Clear logs using DELETE /logs (second verification)
 test_clear_logs() {
-    echo -e "\n${YELLOW}Test: POST /clear endpoint (deprecated)${NC}"
-
-    # Clear using POST
-    local clear_response
-    clear_response=$(curl -s -X POST "${MGMT_URL}/clear")
-
-    if echo "$clear_response" | jq -e '.status == "cleared"' > /dev/null 2>&1; then
-        print_result "Clear endpoint returns correct response" 0
-    else
-        print_result "Clear endpoint response" 1
-        echo "Response: $clear_response"
-        return 1
-    fi
-
-    # Verify logs are empty
-    local logs
-    logs=$(curl -s "${MGMT_URL}/logs")
-
-    if [ "$logs" = "[]" ]; then
-        print_result "Logs are empty after clear" 0
-    else
-        print_result "Logs empty check after clear" 1
-        echo "Logs: $logs"
-        return 1
-    fi
-}
-
-# Test 10: Clear logs using DELETE method on deprecated /clear
-test_clear_logs_delete() {
-    echo -e "\n${YELLOW}Test: DELETE /clear endpoint (deprecated)${NC}"
+    echo -e "\n${YELLOW}Test: DELETE /logs endpoint (second verification)${NC}"
 
     # First make a gRPC call to have something to clear
     if command -v grpcurl &> /dev/null; then
@@ -425,14 +395,14 @@ test_clear_logs_delete() {
             "${GRPC_HOST}:${GRPC_PORT}" EchoService/Echo > /dev/null 2>&1 || true
     fi
 
-    # Clear using DELETE
+    # Clear using DELETE /logs
     local clear_response
-    clear_response=$(curl -s -X DELETE "${MGMT_URL}/clear")
+    clear_response=$(curl -s -X DELETE "${MGMT_URL}/logs")
 
     if echo "$clear_response" | jq -e '.status == "cleared"' > /dev/null 2>&1; then
-        print_result "DELETE /clear returns correct response" 0
+        print_result "DELETE /logs returns correct response" 0
     else
-        print_result "DELETE /clear response" 1
+        print_result "DELETE /logs response" 1
         echo "Response: $clear_response"
         return 1
     fi
@@ -442,9 +412,44 @@ test_clear_logs_delete() {
     logs=$(curl -s "${MGMT_URL}/logs")
 
     if [ "$logs" = "[]" ]; then
-        print_result "Logs are empty after DELETE /clear" 0
+        print_result "Logs are empty after DELETE /logs" 0
     else
-        print_result "Logs empty check after DELETE /clear" 1
+        print_result "Logs empty check after DELETE /logs" 1
+        echo "Logs: $logs"
+        return 1
+    fi
+}
+
+# Test 10: DELETE /logs clears and allows re-recording
+test_clear_logs_delete() {
+    echo -e "\n${YELLOW}Test: DELETE /logs clears and allows re-recording${NC}"
+
+    # First make a gRPC call to have something to clear
+    if command -v grpcurl &> /dev/null; then
+        grpcurl -plaintext -d '{"message": "Test"}' \
+            "${GRPC_HOST}:${GRPC_PORT}" EchoService/Echo > /dev/null 2>&1 || true
+    fi
+
+    # Clear using DELETE /logs
+    local clear_response
+    clear_response=$(curl -s -X DELETE "${MGMT_URL}/logs")
+
+    if echo "$clear_response" | jq -e '.status == "cleared"' > /dev/null 2>&1; then
+        print_result "DELETE /logs returns correct response" 0
+    else
+        print_result "DELETE /logs response" 1
+        echo "Response: $clear_response"
+        return 1
+    fi
+
+    # Verify logs are empty
+    local logs
+    logs=$(curl -s "${MGMT_URL}/logs")
+
+    if [ "$logs" = "[]" ]; then
+        print_result "Logs are empty after DELETE /logs" 0
+    else
+        print_result "Logs empty check after DELETE /logs" 1
         echo "Logs: $logs"
         return 1
     fi
@@ -460,7 +465,7 @@ test_multiple_calls() {
     fi
 
     # Clear first
-    curl -s -X POST "${MGMT_URL}/clear" > /dev/null
+    curl -s -X DELETE "${MGMT_URL}/logs" > /dev/null
 
     # Make multiple calls
     for i in 1 2 3; do
@@ -512,10 +517,10 @@ test_method_not_allowed() {
 
     # GET to /clear should fail
     code=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${MGMT_URL}/clear")
-    if [ "$code" = "405" ]; then
-        print_result "GET /clear returns 405" 0
+    if [ "$code" = "404" ]; then
+        print_result "GET /clear returns 404 (route removed)" 0
     else
-        print_result "GET /clear method check" 1
+        print_result "GET /clear returns 404 check" 1
         result=1
     fi
 
