@@ -22,8 +22,8 @@ func TestHandleLogs(t *testing.T) {
 		RequestID:  "test-id",
 		Method:     "/TestService/TestMethod",
 		Timestamp:  time.Now(),
-		Request:    map[string]string{"message": "hello"},
-		Response:   map[string]string{"message": "world"},
+		Request:    json.RawMessage(`{"message":"hello"}`),
+		Response:   json.RawMessage(`{"message":"world"}`),
 		DurationMs: 50,
 	})
 

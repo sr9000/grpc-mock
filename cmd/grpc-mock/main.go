@@ -361,7 +361,7 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 			RequestID: reqID,
 			Method:    info.FullMethod,
 			Timestamp: startTime,
-			Request:   req,
+			Request:   recorder.MarshalProto(req),
 		}
 
 		// Handle panics
@@ -391,7 +391,7 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 
 		resp, err = handler(ctx, req)
 		record.DurationMs = time.Since(startTime).Milliseconds()
-		record.Response = resp
+		record.Response = recorder.MarshalProto(resp)
 
 		finishRecord(ctx, rec, m, enableLogging, &record, err, span, reqLogger, info.FullMethod, startTime)
 
