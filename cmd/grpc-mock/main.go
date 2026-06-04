@@ -273,8 +273,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 
 	var opts []grpc.ServerOption
-	// Always use recording interceptor for e2e testing
+	// Always use recording interceptors for e2e testing
 	opts = append(opts, grpc.UnaryInterceptor(recordingInterceptor(rec, metricsServer, cfg.EnableLogging, baseLogger, cfg.RequestIDHeaders, cfg.RequestIDResponseHeader, contextValues)))
+	opts = append(opts, grpc.StreamInterceptor(streamingInterceptor(rec, metricsServer, cfg.EnableLogging, baseLogger, cfg.RequestIDHeaders, cfg.RequestIDResponseHeader, contextValues)))
 	grpcServer := grpc.NewServer(opts...)
 
 	if _, err := app.InitializeApp(grpcServer, cfg.EnableLogging); err != nil {
@@ -345,67 +346,7 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 		startTime := time.Now()
 
-		// Extract propagated trace context from inbound gRPC metadata.
-		if grpcMD, ok := metadata.FromIncomingContext(ctx); ok {
-			ctx = otel.GetTextMapPropagator().Extract(ctx, &metadataCarrier{md: grpcMD})
-		}
-
-		// Start a server span named by the full gRPC method.
-		ctx, span := tracer.Start(ctx, info.FullMethod,
-			trace.WithSpanKind(trace.SpanKindServer),
-			trace.WithAttributes(attribute.String("rpc.method", info.FullMethod)),
-		)
-		defer span.End()
-
-		// Resolve request-id from inbound gRPC metadata (fallback to generated).
-		var reqID string
-		if grpcMD, ok := metadata.FromIncomingContext(ctx); ok {
-			reqID = observability.ResolveRequestID(func(key string) string {
-				if vals := grpcMD.Get(key); len(vals) > 0 {
-					return vals[0]
-				}
-				return ""
-			}, allowedHeaders)
-		} else {
-			reqID = observability.GenerateRequestID()
-		}
-
-		// Echo the request-id back in the response metadata.
-		if requestIDResponseHeader != "" {
-			_ = grpc.SetHeader(ctx, metadata.Pairs(requestIDResponseHeader, reqID))
-		}
-
-		// Extract trace-id from the span and enrich metadata + logger.
-		var traceID string
-		if sc := span.SpanContext(); sc.IsValid() {
-			traceID = sc.TraceID().String()
-		}
-
-		// Store request metadata in context.
-		reqMD := &observability.RequestMetadata{
-			RequestID: reqID,
-			TraceID:   traceID,
-			Method:    info.FullMethod,
-		}
-		ctx = observability.WithRequestMetadata(ctx, reqMD)
-		ctx = observability.WithRequestID(ctx, reqID)
-		ctx = observability.WithMethod(ctx, info.FullMethod)
-		ctx = observability.WithTraceID(ctx, traceID)
-
-		// Derive a per-request logger with request_id, trace_id, and method fields.
-		reqLogger := baseLogger.With().
-			Str("request_id", reqID).
-			Str("method", info.FullMethod).
-			Logger()
-		if traceID != "" {
-			reqLogger = reqLogger.With().Str("trace_id", traceID).Logger()
-		}
-		ctx = observability.WithLogger(ctx, reqLogger)
-
-		// Inject pre-seeded context values from the store into the request context.
-		if seeded := contextValues.Get(reqID); len(seeded) > 0 {
-			ctx = mm.WithValues(ctx, seeded)
-		}
+		ctx, reqID, span, reqLogger := prepareContext(ctx, info.FullMethod, allowedHeaders, requestIDResponseHeader, contextValues, tracer, baseLogger)
 
 		if enableLogging {
 			reqLogger.Info().Msg("gRPC request started")
@@ -434,13 +375,10 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 						Interface("panic", r).
 						Msg("gRPC panic")
 				}
-				// Record metrics for panic
 				if m != nil {
 					m.RecordRequest(info.FullMethod, record.DurationMs, "panic")
 					m.RecordPanic(info.FullMethod, record.Panic)
 				}
-
-				// Wrap panic as error to return to client
 				err = fmt.Errorf("panic: %v", r)
 				resp = nil
 			}
@@ -450,39 +388,189 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 		record.DurationMs = time.Since(startTime).Milliseconds()
 		record.Response = resp
 
-		if err != nil {
-			record.Error = err.Error()
-			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
-			span.SetAttributes(attribute.String("rpc.status_code", "error"))
-			if enableLogging {
-				reqLogger.Error().
-					Int64("duration_ms", record.DurationMs).
-					Str("status", "error").
-					Err(err).
-					Msg("gRPC error")
-			}
-			// Record metrics for error
-			if m != nil {
-				m.RecordRequest(info.FullMethod, record.DurationMs, "error")
-				m.RecordError(info.FullMethod, record.Error)
-			}
-		} else {
-			span.SetAttributes(attribute.String("rpc.status_code", "ok"))
-			if enableLogging {
-				reqLogger.Info().
-					Int64("duration_ms", record.DurationMs).
-					Str("status", "success").
-					Msg("gRPC success")
-			}
-			// Record request metrics for success
-			if m != nil {
-				m.RecordRequest(info.FullMethod, record.DurationMs, "success")
-			}
-		}
+		finishRecord(ctx, rec, m, enableLogging, &record, err, span, reqLogger, info.FullMethod, startTime)
 
 		rec.Record(record)
 		return resp, err
+	}
+}
+
+// streamingInterceptor records and meters streaming RPCs.
+func streamingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogging bool, baseLogger zerolog.Logger, requestIDHeaders string, requestIDResponseHeader string, contextValues *mm.Store) grpc.StreamServerInterceptor {
+	allowedHeaders := observability.NormalizeHeaderList(requestIDHeaders, observability.DefaultRequestIDHeaders)
+	tracer := otel.Tracer("grpc-mock")
+
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
+		startTime := time.Now()
+
+		ctx, reqID, span, reqLogger := prepareContext(ss.Context(), info.FullMethod, allowedHeaders, requestIDResponseHeader, contextValues, tracer, baseLogger)
+
+		// Wrap the stream so the context is enriched.
+		wrapped := &contextStream{ServerStream: ss, ctx: ctx}
+
+		if enableLogging {
+			reqLogger.Info().Str("stream_type", streamType(info)).Msg("gRPC stream started")
+		}
+
+		record := recorder.CallRecord{
+			RequestID: reqID,
+			Method:    info.FullMethod,
+			Timestamp: startTime,
+		}
+
+		// Handle panics
+		defer func() {
+			if r := recover(); r != nil {
+				record.DurationMs = time.Since(startTime).Milliseconds()
+				record.Panic = fmt.Sprintf("%v", r)
+				span.RecordError(fmt.Errorf("panic: %v", r))
+				span.SetStatus(codes.Error, record.Panic)
+				span.SetAttributes(attribute.String("rpc.status_code", "panic"))
+				rec.Record(record)
+				if enableLogging {
+					reqLogger.Error().
+						Int64("duration_ms", record.DurationMs).
+						Str("status", "panic").
+						Interface("panic", r).
+						Msg("gRPC stream panic")
+				}
+				if m != nil {
+					m.RecordRequest(info.FullMethod, record.DurationMs, "panic")
+					m.RecordPanic(info.FullMethod, record.Panic)
+				}
+				err = fmt.Errorf("panic: %v", r)
+			}
+		}()
+
+		err = handler(srv, wrapped)
+		record.DurationMs = time.Since(startTime).Milliseconds()
+
+		finishRecord(ctx, rec, m, enableLogging, &record, err, span, reqLogger, info.FullMethod, startTime)
+
+		rec.Record(record)
+		return err
+	}
+}
+
+// prepareContext extracts trace context, resolves request-id, creates a span, and enriches the context.
+func prepareContext(ctx context.Context, fullMethod string, allowedHeaders []string, requestIDResponseHeader string, contextValues *mm.Store, tracer trace.Tracer, baseLogger zerolog.Logger) (context.Context, string, trace.Span, zerolog.Logger) {
+	// Extract propagated trace context from inbound gRPC metadata.
+	if grpcMD, ok := metadata.FromIncomingContext(ctx); ok {
+		ctx = otel.GetTextMapPropagator().Extract(ctx, &metadataCarrier{md: grpcMD})
+	}
+
+	// Start a server span named by the full gRPC method.
+	ctx, span := tracer.Start(ctx, fullMethod,
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(attribute.String("rpc.method", fullMethod)),
+	)
+
+	// Resolve request-id from inbound gRPC metadata (fallback to generated).
+	var reqID string
+	if grpcMD, ok := metadata.FromIncomingContext(ctx); ok {
+		reqID = observability.ResolveRequestID(func(key string) string {
+			if vals := grpcMD.Get(key); len(vals) > 0 {
+				return vals[0]
+			}
+			return ""
+		}, allowedHeaders)
+	} else {
+		reqID = observability.GenerateRequestID()
+	}
+
+	// Echo the request-id back in the response metadata.
+	if requestIDResponseHeader != "" {
+		_ = grpc.SetHeader(ctx, metadata.Pairs(requestIDResponseHeader, reqID))
+	}
+
+	// Extract trace-id from the span and enrich metadata + logger.
+	var traceID string
+	if sc := span.SpanContext(); sc.IsValid() {
+		traceID = sc.TraceID().String()
+	}
+
+	// Store request metadata in context.
+	reqMD := &observability.RequestMetadata{
+		RequestID: reqID,
+		TraceID:   traceID,
+		Method:    fullMethod,
+	}
+	ctx = observability.WithRequestMetadata(ctx, reqMD)
+	ctx = observability.WithRequestID(ctx, reqID)
+	ctx = observability.WithMethod(ctx, fullMethod)
+	ctx = observability.WithTraceID(ctx, traceID)
+
+	// Derive a per-request logger with request_id, trace_id, and method fields.
+	reqLogger := baseLogger.With().
+		Str("request_id", reqID).
+		Str("method", fullMethod).
+		Logger()
+	if traceID != "" {
+		reqLogger = reqLogger.With().Str("trace_id", traceID).Logger()
+	}
+	ctx = observability.WithLogger(ctx, reqLogger)
+
+	// Inject pre-seeded context values from the store into the request context.
+	if seeded := contextValues.Get(reqID); len(seeded) > 0 {
+		ctx = mm.WithValues(ctx, seeded)
+	}
+
+	return ctx, reqID, span, reqLogger
+}
+
+// finishRecord handles error/success logging, metrics, and span status for both unary and stream interceptors.
+func finishRecord(_ context.Context, _ *recorder.Recorder, m *metrics.Metrics, enableLogging bool, record *recorder.CallRecord, err error, span trace.Span, reqLogger zerolog.Logger, fullMethod string, startTime time.Time) {
+	if err != nil {
+		record.Error = err.Error()
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("rpc.status_code", "error"))
+		if enableLogging {
+			reqLogger.Error().
+				Int64("duration_ms", record.DurationMs).
+				Str("status", "error").
+				Err(err).
+				Msg("gRPC error")
+		}
+		if m != nil {
+			m.RecordRequest(fullMethod, record.DurationMs, "error")
+			m.RecordError(fullMethod, record.Error)
+		}
+	} else {
+		span.SetAttributes(attribute.String("rpc.status_code", "ok"))
+		if enableLogging {
+			reqLogger.Info().
+				Int64("duration_ms", record.DurationMs).
+				Str("status", "success").
+				Msg("gRPC success")
+		}
+		if m != nil {
+			m.RecordRequest(fullMethod, record.DurationMs, "success")
+		}
+	}
+}
+
+// contextStream wraps grpc.ServerStream to override the context.
+type contextStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *contextStream) Context() context.Context {
+	return s.ctx
+}
+
+// streamType returns a human-readable description of the stream type.
+func streamType(info *grpc.StreamServerInfo) string {
+	switch {
+	case info.IsClientStream && info.IsServerStream:
+		return "bidi"
+	case info.IsClientStream:
+		return "client"
+	case info.IsServerStream:
+		return "server"
+	default:
+		return "unary"
 	}
 }
 
