@@ -31,6 +31,10 @@ type Config struct {
 	EnableMetrics    bool   `env:"METRICS_ENABLED" envDefault:"true"`
 	EnableReflection bool   `env:"GRPC_REFLECTION" envDefault:"false"`
 	EnableLogging    bool   `env:"GRPC_LOGGING" envDefault:"true"`
+	LogFormat        string `env:"LOG_FORMAT" envDefault:"json"`
+	LogOutput        string `env:"LOG_OUTPUT" envDefault:"stdout"`
+	LogFile          string `env:"LOG_FILE"`
+	LogLevel         string `env:"LOG_LEVEL" envDefault:"info"`
 }
 
 func loadConfig() (Config, error) {
@@ -66,6 +70,12 @@ func main() {
 	runCmd.Flags().Bool("metrics-enabled", true, "Enable metrics server (overrides METRICS_ENABLED env var)")
 	runCmd.Flags().Bool("logging", true, "Enable gRPC request logging (overrides GRPC_LOGGING env var)")
 	runCmd.Flags().BoolP("reflection", "r", false, "Enable gRPC server reflection (overrides GRPC_REFLECTION env var)")
+
+	// Logging flags
+	runCmd.Flags().String("log-format", "", "Log format: json or console (overrides LOG_FORMAT env var)")
+	runCmd.Flags().String("log-output", "", "Log output: stdout or file (overrides LOG_OUTPUT env var)")
+	runCmd.Flags().String("log-file", "", "Log file path when output=file (overrides LOG_FILE env var)")
+	runCmd.Flags().String("log-level", "", "Log level: debug, info, warn, error (overrides LOG_LEVEL env var)")
 
 	// Deprecated flags (kept for backward compatibility)
 	runCmd.Flags().Bool("no-mgmt", false, "[deprecated] Use --mgmt-enabled=false instead")
@@ -125,6 +135,20 @@ func runServer(cmd *cobra.Command, args []string) error {
 		cfg.EnableReflection = v
 	}
 
+	// Logging flag overrides
+	if v, _ := cmd.Flags().GetString("log-format"); v != "" {
+		cfg.LogFormat = v
+	}
+	if v, _ := cmd.Flags().GetString("log-output"); v != "" {
+		cfg.LogOutput = v
+	}
+	if v, _ := cmd.Flags().GetString("log-file"); v != "" {
+		cfg.LogFile = v
+	}
+	if v, _ := cmd.Flags().GetString("log-level"); v != "" {
+		cfg.LogLevel = v
+	}
+
 	// Deprecated flag handling (lower precedence than explicit boolean flags)
 	if cmd.Flags().Changed("no-mgmt") && !cmd.Flags().Changed("mgmt-enabled") {
 		v, _ := cmd.Flags().GetBool("no-mgmt")
@@ -147,11 +171,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 		cfg.Port = args[1]
 	}
 
-	// Build the base structured logger.
+	// Build the base structured logger from config.
 	baseLogger, logCloser, err := observability.NewLogger(observability.LogConfig{
-		Format: "json",
-		Output: "stdout",
-		Level:  "info",
+		Format: cfg.LogFormat,
+		Output: cfg.LogOutput,
+		File:   cfg.LogFile,
+		Level:  cfg.LogLevel,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create logger: %w", err)
