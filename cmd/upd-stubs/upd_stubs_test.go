@@ -1,6 +1,9 @@
 package main
 
 import (
+	"go/parser"
+	"go/token"
+	"go/types"
 	"testing"
 )
 
@@ -194,5 +197,104 @@ func TestNewFileImports(t *testing.T) {
 		t.Fatal("expected genproto/echo import")
 	} else if alias != "echopb" {
 		t.Fatalf("expected alias echopb, got %q", alias)
+	}
+}
+
+func TestIsReceiver(t *testing.T) {
+	tests := []struct {
+		name       string
+		expr       string
+		structName string
+		want       bool
+	}{
+		{"pointer receiver", "*EchoServer", "EchoServer", true},
+		{"value receiver", "EchoServer", "EchoServer", true},
+		{"wrong struct", "*OtherServer", "EchoServer", false},
+		{"double pointer", "**EchoServer", "EchoServer", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fset := token.NewFileSet()
+			expr, err := parser.ParseExpr(tt.expr)
+			if err != nil {
+				t.Fatalf("failed to parse expr: %v", err)
+			}
+			got := isReceiver(expr, tt.structName)
+			if got != tt.want {
+				t.Errorf("isReceiver(%s, %s) = %v, want %v", tt.expr, tt.structName, got, tt.want)
+			}
+			_ = fset // keep for future use
+		})
+	}
+}
+
+func TestZeroValue(t *testing.T) {
+	tests := []struct {
+		name string
+		typ  types.Type
+		want string
+	}{
+		{"bool", types.Typ[types.Bool], "false"},
+		{"string", types.Typ[types.String], `""`},
+		{"int", types.Typ[types.Int], "0"},
+		{"int32", types.Typ[types.Int32], "0"},
+		{"uint64", types.Typ[types.Uint64], "0"},
+		{"float32", types.Typ[types.Float32], "0"},
+		{"slice", types.NewSlice(types.Typ[types.String]), "nil"},
+		{"map", types.NewMap(types.Typ[types.String], types.Typ[types.Int]), "nil"},
+		{"interface", types.NewInterfaceType(nil, nil), "nil"},
+	}
+	imports := map[string]string{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := zeroValue(tt.typ, imports)
+			if got != tt.want {
+				t.Errorf("zeroValue(%v) = %q, want %q", tt.typ, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDeriveStructName_Table(t *testing.T) {
+	tests := []struct {
+		iface string
+		want  string
+	}{
+		{"EchoServiceServer", "EchoServer"},
+		{"ComplexServiceServer", "ComplexServer"},
+		{"FooServer", "FooServer"},
+		{"BarServiceServer", "BarServer"},
+		{"UserServiceServer", "UserServer"},
+		{"Server", "Server"}, // no "Server" suffix to strip beyond the base
+	}
+	for _, tt := range tests {
+		t.Run(tt.iface, func(t *testing.T) {
+			got := deriveStructName(tt.iface)
+			if got != tt.want {
+				t.Errorf("deriveStructName(%q) = %q, want %q", tt.iface, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenprotoPackageAlias_Table(t *testing.T) {
+	tests := []struct {
+		pkgPath string
+		want    string
+	}{
+		{"grpc-mock/internal/genproto/echo", "echopb"},
+		{"grpc-mock/internal/genproto/complex/service", "servicepb"},
+		{"grpc-mock/internal/genproto", "genprotopb"},
+		{"grpc-mock/internal/genproto/store/v1", "v1pb"},
+		{"other/module/something", ""},
+		{"grpc-mock/internal/genproto/echopb", "echopb"}, // already has pb suffix
+	}
+	for _, tt := range tests {
+		t.Run(tt.pkgPath, func(t *testing.T) {
+			got := genprotoPackageAlias(tt.pkgPath)
+			if got != tt.want {
+				t.Errorf("genprotoPackageAlias(%q) = %q, want %q", tt.pkgPath, got, tt.want)
+			}
+		})
 	}
 }
