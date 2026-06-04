@@ -35,3 +35,4 @@ Thumbs.db
 # Python cache
 __pycache__/
 scripts/__pycache__/
+*.pyc
