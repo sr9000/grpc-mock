@@ -212,22 +212,22 @@ open http://localhost:9000/doc
 
 ### Метрики gRPC:
 
-| Метрика                          | Тип       | Labels               | Описание                                    |
-|:---------------------------------|:----------|:---------------------|:--------------------------------------------|
-| `grpc_requests_total`            | Counter   | `method`             | Общее количество gRPC запросов (для RPS)    |
-| `grpc_request_duration_seconds`  | Histogram | `method`             | Гистограмма латентности запросов            |
-| `grpc_errors_total`              | Counter   | `method`, `error`    | Количество ошибок по сообщению (error rate) |
-| `grpc_panics_total`              | Counter   | `method`, `panic`    | Количество паник по сообщению (panic rate)  |
+| Метрика                          | Тип       | Labels                | Описание                                    |
+|:---------------------------------|:----------|:----------------------|:--------------------------------------------|
+| `grpc_requests_total`            | Counter   | `method`, `status`    | Общее количество gRPC запросов (для RPS)    |
+| `grpc_request_duration_seconds`  | Histogram | `method`, `status`    | Гистограмма латентности запросов            |
+| `grpc_errors_total`              | Counter   | `method`, `error`     | Количество ошибок по сообщению (error rate) |
+| `grpc_panics_total`              | Counter   | `method`, `panic`     | Количество паник по сообщению (panic rate)  |
 
 ### Метрики ресурсов:
 
 | Метрика                         | Тип     | Labels | Описание                                          |
 |:--------------------------------|:--------|:-------|:--------------------------------------------------|
-| `process_memory_bytes`          | Gauge   | `type` | Использование памяти (alloc, heap, sys, stack)    |
-| `process_goroutines`            | Gauge   | —      | Количество горутин                                |
+| `grpc_memory_bytes`             | Gauge   | `type` | Использование памяти (alloc, heap, sys, stack)    |
+| `grpc_goroutines_total`         | Gauge   | —      | Количество горутин                                |
+| `go_memstats_*`                 | —       | —      | Детальная статистика Go runtime (GC, heap и т.д.) |
 | `process_cpu_seconds_total`     | Counter | —      | Время CPU (user + system)                         |
 | `process_resident_memory_bytes` | Gauge   | —      | Резидентная память процесса                       |
-| `go_memstats_*`                 | —       | —      | Детальная статистика Go runtime (GC, heap и т.д.) |
 
 ### Примеры использования:
 
@@ -270,7 +270,7 @@ histogram_quantile(0.99, rate(grpc_request_duration_seconds_bucket[5m]))
 rate(grpc_errors_total[1m])
 
 # Память heap
-process_memory_bytes{type="heap_alloc"}
+grpc_memory_bytes{type="heap_alloc"}
 ```
 
 ## 🛠 Детали пайплайна генерации
