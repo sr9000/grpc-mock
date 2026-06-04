@@ -14,14 +14,14 @@ This repo implements the contracts defined in `../CONTRACTS.md` (workspace root)
 - Wire-based registration,
 - management API for logs/docs,
 - Prometheus metrics server,
-- working Docker dev hot reload via `air`.
+- Docker dev environment with manual restart.
 
 ## Strengths worth preserving
 
 1. **Simple pipeline mental model**
     - `update-proto-pkg -> proto -> stub -> wire -> build`
 2. **Good local/dev feedback loop**
-    - `scripts/run-dev.sh` uses watcher-based regeneration/restart
+    - `scripts/run-dev.sh` builds and runs the server; manual restart for changes
 3. **Transport-native usefulness**
     - reflection support is valuable for gRPC tooling
 4. **Safe-enough stub patching behavior**

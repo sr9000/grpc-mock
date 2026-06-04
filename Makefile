@@ -114,7 +114,7 @@ help:
 	@echo "  run          - Run the server"
 	@echo "  docker-build - Build production Docker image"
 	@echo "  docker-run   - Run production Docker container"
-	@echo "  docker-dev   - Start development environment (watch mode)"
+	@echo "  docker-dev   - Start development environment (build + run)"
 	@echo "  compose-up   - Start full stack (Mock + Monitoring)"
 	@echo "  compose-logs - Follow logs of full stack"
 	@echo "  compose-down - Stop full stack"
