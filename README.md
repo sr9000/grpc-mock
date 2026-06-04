@@ -179,14 +179,29 @@
 
 ### Core-эндпоинты (обязательные, идентичны openapi-mock):
 
-| Метод    | Путь                 | Описание                                           |
-|:---------|:---------------------|:---------------------------------------------------|
-| `GET`    | `/logs`              | Получить все записанные gRPC-вызовы в формате JSON |
-| `GET`    | `/logs/{request_id}` | Получить записи для конкретного request id         |
-| `DELETE` | `/logs`              | Очистить все записи                                |
-| `POST`   | `/reset`             | Soft reset (очистка записей + сброс состояния)     |
-| `GET`    | `/doc`               | Интерактивная страница Swagger UI                  |
-| `GET`    | `/openapi.json`      | Спецификация OpenAPI в формате JSON                |
+| Метод    | Путь                          | Описание                                           |
+|:---------|:------------------------------|:---------------------------------------------------|
+| `GET`    | `/logs`                       | Получить все записанные gRPC-вызовы в формате JSON |
+| `GET`    | `/logs/{request_id}`          | Получить записи для конкретного request id         |
+| `DELETE` | `/logs`                       | Очистить все записи                                |
+| `POST`   | `/reset`                      | Soft reset (очистка записей + сброс состояния)     |
+| `GET`    | `/docs`                       | Список зарегистрированных gRPC-сервисов            |
+| `GET`    | `/docs/{service}`             | Методы конкретного gRPC-сервиса                    |
+| `GET`    | `/doc`                        | Интерактивная страница Swagger UI                  |
+| `GET`    | `/openapi.json`               | Спецификация OpenAPI в формате JSON                |
+
+### Context-values эндпоинты (pre-seeding контекста запросов):
+
+| Метод    | Путь                                    | Описание                                              |
+|:---------|:----------------------------------------|:------------------------------------------------------|
+| `GET`    | `/context-values`                       | Получить все контекстные значения                     |
+| `PUT`    | `/context-values`                       | Заменить все контекстные значения                     |
+| `PATCH`  | `/context-values`                       | Объединить с существующими контекстными значениями    |
+| `DELETE` | `/context-values`                       | Очистить все контекстные значения                     |
+| `GET`    | `/context-values/{request_id}`          | Получить значения для конкретного request id          |
+| `PUT`    | `/context-values/{request_id}`          | Заменить значения для конкретного request id          |
+| `PATCH`  | `/context-values/{request_id}`          | Объединить значения для конкретного request id        |
+| `DELETE` | `/context-values/{request_id}`          | Удалить значения для конкретного request id           |
 
 ### Устаревшие эндпоинты:
 
@@ -431,46 +446,6 @@ Compose-файлы:
 - `docker-compose.yaml` — dev-окружение.
 - `docker-compose.observability.yaml` — полный observability-стек (Prometheus, Loki, Tempo, OTel Collector, Grafana).
 - Конфиги сервисов лежат в `deploy/` (`prometheus.yaml`, `otel.yaml`, `promtail.yaml`, `tempo.yaml`, `grafana/`).
-
-````
-This is the description of what the code block changes:
-<changeDescription>
-Update README observability section with new compose info
-</changeDescription>
-
-This is the code block that represents the suggested code change:
-````markdown
-### Запуск полного стека (Mock + Grafana + Prometheus)
-
-Для запуска стека мониторинга (доступен по адресу http://localhost:3000):
-
-```bash
-make compose-up
-```
-
-Для просмотра логов:
-
-```bash
-make compose-logs
-```
-
-Для остановки:
-
-```bash
-make compose-down
-```
-
-Для smoke-тестирования:
-
-```bash
-make compose-smoke
-```
-
-Compose-файлы:
-- `docker-compose.yaml` — dev-окружение.
-- `docker-compose.observability.yaml` — полный observability-стек (Prometheus, Loki, Tempo, OTel Collector, Grafana).
-- Конфиги сервисов лежат в `deploy/` (`prometheus.yaml`, `otel.yaml`, `promtail.yaml`, `tempo.yaml`, `grafana/`).
-```
 
 ### Сборка для продакшена
 

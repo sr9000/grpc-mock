@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc"
 )
 
 func TestHandleLogs(t *testing.T) {
@@ -919,5 +921,161 @@ func TestContextValuesSharedStore(t *testing.T) {
 	}
 	if result["shared_key"] != "shared_val" {
 		t.Errorf("Expected shared_key=shared_val, got %v", result["shared_key"])
+	}
+}
+
+// --- Service docs discovery tests ---
+
+func TestHandleDocsNoServiceInfo(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000")
+	r := s.router()
+
+	req := httptest.NewRequest(http.MethodGet, "/docs", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	items, ok := result["items"].([]any)
+	if !ok {
+		t.Fatalf("Expected 'items' array, got %T", result["items"])
+	}
+	if len(items) != 0 {
+		t.Errorf("Expected empty items, got %d", len(items))
+	}
+}
+
+func TestHandleDocsWithServiceInfo(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000", WithServiceInfo(func() map[string]grpc.ServiceInfo {
+		return map[string]grpc.ServiceInfo{
+			"test.EchoService": {
+				Methods: []grpc.MethodInfo{
+					{Name: "/test.EchoService/Echo"},
+					{Name: "/test.EchoService/Stream"},
+				},
+			},
+			"test.ComplexService": {
+				Methods: []grpc.MethodInfo{
+					{Name: "/test.ComplexService/Create"},
+				},
+			},
+		}
+	}))
+	r := s.router()
+
+	req := httptest.NewRequest(http.MethodGet, "/docs", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	items, ok := result["items"].([]any)
+	if !ok {
+		t.Fatalf("Expected 'items' array, got %T", result["items"])
+	}
+	if len(items) != 2 {
+		t.Fatalf("Expected 2 services, got %d", len(items))
+	}
+}
+
+func TestHandleDocsServiceFound(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000", WithServiceInfo(func() map[string]grpc.ServiceInfo {
+		return map[string]grpc.ServiceInfo{
+			"test.EchoService": {
+				Methods: []grpc.MethodInfo{
+					{Name: "/test.EchoService/Echo"},
+					{Name: "/test.EchoService/Stream"},
+				},
+			},
+		}
+	}))
+	r := s.router()
+
+	req := httptest.NewRequest(http.MethodGet, "/docs/test.EchoService", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if result["name"] != "test.EchoService" {
+		t.Errorf("Expected name 'test.EchoService', got %v", result["name"])
+	}
+	methods, ok := result["methods"].([]any)
+	if !ok {
+		t.Fatalf("Expected 'methods' array, got %T", result["methods"])
+	}
+	if len(methods) != 2 {
+		t.Errorf("Expected 2 methods, got %d", len(methods))
+	}
+}
+
+func TestHandleDocsServiceNotFound(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000", WithServiceInfo(func() map[string]grpc.ServiceInfo {
+		return map[string]grpc.ServiceInfo{
+			"test.EchoService": {Methods: []grpc.MethodInfo{{Name: "/test.EchoService/Echo"}}},
+		}
+	}))
+	r := s.router()
+
+	req := httptest.NewRequest(http.MethodGet, "/docs/nonexistent.Service", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleDocsServiceNoServiceInfo(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000")
+	r := s.router()
+
+	req := httptest.NewRequest(http.MethodGet, "/docs/test.EchoService", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", resp.StatusCode)
 	}
 }

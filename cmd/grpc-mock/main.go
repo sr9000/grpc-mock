@@ -288,7 +288,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	// Start management server if enabled
 	var mgmtServer *mgmt.Server
 	if cfg.EnableMgmt {
-		mgmtServer = mgmt.New(rec, cfg.MgmtPort, mgmt.WithContextValues(contextValues))
+		mgmtServer = mgmt.New(rec, cfg.MgmtPort, mgmt.WithContextValues(contextValues), mgmt.WithServiceInfo(grpcServer.GetServiceInfo))
 		if err := mgmtServer.Start(); err != nil {
 			return fmt.Errorf("failed to start management server: %w", err)
 		}
