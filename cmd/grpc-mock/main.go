@@ -19,22 +19,25 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 )
 
 type Config struct {
-	Host             string `env:"HOST" envDefault:"0.0.0.0"`
-	Port             string `env:"PORT" envDefault:"50051"`
-	MgmtPort         string `env:"MGMT_PORT" envDefault:"9000"`
-	MetricsPort      string `env:"METRICS_PORT" envDefault:"9100"`
-	EnableMgmt       bool   `env:"MGMT_ENABLED" envDefault:"true"`
-	EnableMetrics    bool   `env:"METRICS_ENABLED" envDefault:"true"`
-	EnableReflection bool   `env:"GRPC_REFLECTION" envDefault:"false"`
-	EnableLogging    bool   `env:"GRPC_LOGGING" envDefault:"true"`
-	LogFormat        string `env:"LOG_FORMAT" envDefault:"json"`
-	LogOutput        string `env:"LOG_OUTPUT" envDefault:"stdout"`
-	LogFile          string `env:"LOG_FILE"`
-	LogLevel         string `env:"LOG_LEVEL" envDefault:"info"`
+	Host                    string `env:"HOST" envDefault:"0.0.0.0"`
+	Port                    string `env:"PORT" envDefault:"50051"`
+	MgmtPort                string `env:"MGMT_PORT" envDefault:"9000"`
+	MetricsPort             string `env:"METRICS_PORT" envDefault:"9100"`
+	EnableMgmt              bool   `env:"MGMT_ENABLED" envDefault:"true"`
+	EnableMetrics           bool   `env:"METRICS_ENABLED" envDefault:"true"`
+	EnableReflection        bool   `env:"GRPC_REFLECTION" envDefault:"false"`
+	EnableLogging           bool   `env:"GRPC_LOGGING" envDefault:"true"`
+	LogFormat               string `env:"LOG_FORMAT" envDefault:"json"`
+	LogOutput               string `env:"LOG_OUTPUT" envDefault:"stdout"`
+	LogFile                 string `env:"LOG_FILE"`
+	LogLevel                string `env:"LOG_LEVEL" envDefault:"info"`
+	RequestIDHeaders        string `env:"REQUEST_ID_HEADERS"`
+	RequestIDResponseHeader string `env:"REQUEST_ID_RESPONSE_HEADER" envDefault:"x-request-id"`
 }
 
 func loadConfig() (Config, error) {
@@ -215,7 +218,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	var opts []grpc.ServerOption
 	// Always use recording interceptor for e2e testing
-	opts = append(opts, grpc.UnaryInterceptor(recordingInterceptor(rec, metricsServer, cfg.EnableLogging, baseLogger)))
+	opts = append(opts, grpc.UnaryInterceptor(recordingInterceptor(rec, metricsServer, cfg.EnableLogging, baseLogger, cfg.RequestIDHeaders, cfg.RequestIDResponseHeader)))
 	grpcServer := grpc.NewServer(opts...)
 
 	if _, err := app.InitializeApp(grpcServer, cfg.EnableLogging); err != nil {
@@ -279,10 +282,29 @@ func runServer(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogging bool, baseLogger zerolog.Logger) grpc.UnaryServerInterceptor {
+func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogging bool, baseLogger zerolog.Logger, requestIDHeaders string, requestIDResponseHeader string) grpc.UnaryServerInterceptor {
+	allowedHeaders := observability.NormalizeHeaderList(requestIDHeaders, observability.DefaultRequestIDHeaders)
+
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
-		reqID := observability.GenerateRequestID()
 		startTime := time.Now()
+
+		// Resolve request-id from inbound gRPC metadata (fallback to generated).
+		var reqID string
+		if md, ok := metadata.FromIncomingContext(ctx); ok {
+			reqID = observability.ResolveRequestID(func(key string) string {
+				if vals := md.Get(key); len(vals) > 0 {
+					return vals[0]
+				}
+				return ""
+			}, allowedHeaders)
+		} else {
+			reqID = observability.GenerateRequestID()
+		}
+
+		// Echo the request-id back in the response metadata.
+		if requestIDResponseHeader != "" {
+			_ = grpc.SetHeader(ctx, metadata.Pairs(requestIDResponseHeader, reqID))
+		}
 
 		// Store request metadata in context.
 		md := &observability.RequestMetadata{
