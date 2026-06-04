@@ -106,35 +106,55 @@
 
 #### Флаги:
 
-| Флаг                | Сокр. | Описание                                                            |
-|:--------------------|:------|:--------------------------------------------------------------------|
-| `--host`            |       | Хост интерфейса (переопределяет переменную `HOST`).                 |
-| `--port`            | `-p`  | Порт (переопределяет переменную `PORT`).                            |
-| `--mgmt-port`       | `-m`  | Порт сервера управления (переопределяет `MGMT_PORT`).               |
-| `--metrics-port`    |       | Порт сервера метрик (переопределяет `METRICS_PORT`).                |
-| `--mgmt-enabled`    |       | Включить сервер управления (переопределяет `MGMT_ENABLED`).         |
-| `--metrics-enabled` |       | Включить сервер метрик (переопределяет `METRICS_ENABLED`).          |
-| `--logging`         |       | Включить логирование gRPC запросов (переопределяет `GRPC_LOGGING`). |
-| `--reflection`      | `-r`  | Включить gRPC рефлексию (переопределяет `GRPC_REFLECTION`).         |
-| `--no-mgmt`         |       | *(устаревший)* Используйте `--mgmt-enabled=false`.                  |
-| `--no-metrics`      |       | *(устаревший)* Используйте `--metrics-enabled=false`.               |
-| `--no-logs`         |       | *(устаревший)* Используйте `--logging=false`.                       |
-| `--help`            | `-h`  | Показать справку.                                                   |
+| Флаг                        | Сокр. | Описание                                                            |
+|:----------------------------|:------|:--------------------------------------------------------------------|
+| `--host`                    |       | Хост интерфейса (переопределяет переменную `HOST`).                 |
+| `--port`                    | `-p`  | Порт (переопределяет переменную `PORT`).                            |
+| `--mgmt-port`               | `-m`  | Порт сервера управления (переопределяет `MGMT_PORT`).               |
+| `--metrics-port`            |       | Порт сервера метрик (переопределяет `METRICS_PORT`).                |
+| `--mgmt-enabled`            |       | Включить сервер управления (переопределяет `MGMT_ENABLED`).         |
+| `--metrics-enabled`         |       | Включить сервер метрик (переопределяет `METRICS_ENABLED`).          |
+| `--logging`                 |       | Включить логирование gRPC запросов (переопределяет `GRPC_LOGGING`). |
+| `--reflection`              | `-r`  | Включить gRPC рефлексию (переопределяет `GRPC_REFLECTION`).         |
+| `--log-format`              |       | Формат логов: json/console (переопределяет `LOG_FORMAT`).           |
+| `--log-output`              |       | Куда писать логи: stdout/file (переопределяет `LOG_OUTPUT`).        |
+| `--log-file`                |       | Путь до лог-файла при output=file (переопределяет `LOG_FILE`).      |
+| `--log-level`               |       | Уровень логирования: debug..error (переопределяет `LOG_LEVEL`).     |
+| `--trace-enabled`           |       | Включить OpenTelemetry tracing (переопределяет `TRACE_ENABLED`).    |
+| `--trace-exporter`          |       | Экспортер трейсов: none/file/otlp-http (переопределяет `TRACE_EXPORTER`). |
+| `--trace-endpoint`          |       | OTLP HTTP endpoint, напр. otel-collector:4318 (переопределяет `TRACE_ENDPOINT`). |
+| `--trace-file`              |       | Файл трейсов при exporter=file (переопределяет `TRACE_FILE`).       |
+| `--trace-sampling-ratio`    |       | Доля семплирования 0.0–1.0 (переопределяет `TRACE_SAMPLING_RATIO`). |
+| `--no-mgmt`                 |       | *(устаревший)* Используйте `--mgmt-enabled=false`.                  |
+| `--no-metrics`              |       | *(устаревший)* Используйте `--metrics-enabled=false`.               |
+| `--no-logs`                 |       | *(устаревший)* Используйте `--logging=false`.                       |
+| `--help`                    | `-h`  | Показать справку.                                                   |
 
 #### Переменные окружения:
 
 Если флаги или аргументы не переданы, сервер использует значения из переменных окружения:
 
-| Переменная        | По умолч. | Описание                              |
-|:------------------|:----------|:--------------------------------------|
-| `HOST`            | 0.0.0.0   | Хост интерфейса для привязки          |
-| `PORT`            | 50051     | Порт для прослушивания                |
-| `MGMT_PORT`       | 9000      | Порт сервера управления               |
-| `METRICS_PORT`    | 9100      | Порт сервера метрик Prometheus        |
-| `MGMT_ENABLED`    | true      | Включить сервер управления            |
-| `METRICS_ENABLED` | true      | Включить сервер метрик                |
-| `GRPC_REFLECTION` | false     | Включить gRPC рефлексию               |
-| `GRPC_LOGGING`    | true      | Включить логирование запросов/ответов |
+| Переменная                   | По умолч.        | Описание                                            |
+|:-----------------------------|:-----------------|:----------------------------------------------------|
+| `HOST`                       | 0.0.0.0          | Хост интерфейса для привязки                        |
+| `PORT`                       | 50051            | Порт для прослушивания                              |
+| `MGMT_PORT`                  | 9000             | Порт сервера управления                             |
+| `METRICS_PORT`               | 9100             | Порт сервера метрик Prometheus                      |
+| `MGMT_ENABLED`               | true             | Включить сервер управления                          |
+| `METRICS_ENABLED`            | true             | Включить сервер метрик                              |
+| `GRPC_REFLECTION`            | false            | Включить gRPC рефлексию                             |
+| `GRPC_LOGGING`               | true             | Включить логирование запросов/ответов               |
+| `REQUEST_ID_HEADERS`         | x-request-id,... | Заголовки для входящего request id (через запятую)  |
+| `REQUEST_ID_RESPONSE_HEADER` | x-request-id     | Каноничный response header c request id             |
+| `LOG_FORMAT`                 | json             | Формат логов (`json`/`console`)                     |
+| `LOG_OUTPUT`                 | stdout           | Куда писать логи (`stdout`/`file`)                  |
+| `LOG_FILE`                   | -                | Путь до лог-файла, если `LOG_OUTPUT=file`           |
+| `LOG_LEVEL`                  | info             | Уровень логирования (`debug..error`)                |
+| `TRACE_ENABLED`              | false            | Включить OpenTelemetry tracing                      |
+| `TRACE_EXPORTER`             | none             | Экспортер трейсов (`none`/`file`/`otlp-http`)       |
+| `TRACE_ENDPOINT`             | -                | OTLP HTTP endpoint (например `otel-collector:4318`) |
+| `TRACE_FILE`                 | ./traces.json    | Файл трейсов при `TRACE_EXPORTER=file`              |
+| `TRACE_SAMPLING_RATIO`       | 1.0              | Доля семплирования трейсов                          |
 
 #### Примеры:
 
@@ -294,6 +314,45 @@ rate(grpc_errors_total[1m])
 
 # Память heap
 grpc_memory_bytes{type="heap_alloc"}
+```
+
+### Трассировка (OpenTelemetry / Tempo)
+
+При включении флага `TRACE_ENABLED=true` (по умолчанию выключено) сервер автоматически извлекает `traceparent` из
+метаданных gRPC-запросов и отправляет спаны в OpenTelemetry Collector.
+
+Поддерживаемые экспортеры:
+
+| Экспортер   | Описание                                          | Переменные                        |
+|:------------|:--------------------------------------------------|:----------------------------------|
+| `none`      | Трассировка отключена (по умолчанию)              | —                                 |
+| `file`      | Запись спанов в JSON-файл (удобно для отладки)    | `TRACE_FILE`                      |
+| `otlp-http` | Отправка спанов через OTLP HTTP в Collector/Tempo | `TRACE_ENDPOINT`, `TRACE_FILE`    |
+
+```bash
+# Пример запуска с файловым экспортером
+TRACE_ENABLED=true TRACE_EXPORTER=file ./bin/grpc-mock run
+
+# Пример запуска с OTLP HTTP экспортером
+TRACE_ENABLED=true TRACE_EXPORTER=otlp-http TRACE_ENDPOINT=otel-collector:4318 ./bin/grpc-mock run
+
+# Пример запроса с пробросом конкретного trace_id через grpcurl
+grpcurl -plaintext \
+  -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
+  -d '{"message":"traced"}' \
+  localhost:50051 EchoService/Echo
+```
+
+### Структурированное логирование (Loki / ZeroLog)
+
+Все логи gRPC-запросов и внутреннее логирование автоматически связываются с `request_id`, `trace_id` и `method`.
+Формат логов по умолчанию — `json` (управляется переменной `LOG_FORMAT`), что делает их готовыми для парсинга и
+отправки в Loki. В заглушках (stubs) рекомендуется использовать контекстный логгер из `pkg/observability` для
+сохранения привязки к `trace_id`:
+
+```go
+logger := observability.Logger(ctx, zerolog.Nop())
+logger.Info().Msg("Запрос достиг бизнес-логики") // Будет содержать trace_id и method
 ```
 
 ## 🛠 Детали пайплайна генерации

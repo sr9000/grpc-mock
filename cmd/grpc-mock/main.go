@@ -88,6 +88,13 @@ func main() {
 	runCmd.Flags().String("log-file", "", "Log file path when output=file (overrides LOG_FILE env var)")
 	runCmd.Flags().String("log-level", "", "Log level: debug, info, warn, error (overrides LOG_LEVEL env var)")
 
+	// Tracing flags
+	runCmd.Flags().Bool("trace-enabled", false, "Enable OpenTelemetry tracing (overrides TRACE_ENABLED env var)")
+	runCmd.Flags().String("trace-exporter", "", "Trace exporter: none, file, otlp-http (overrides TRACE_EXPORTER env var)")
+	runCmd.Flags().String("trace-endpoint", "", "OTLP HTTP endpoint, e.g. otel-collector:4318 (overrides TRACE_ENDPOINT env var)")
+	runCmd.Flags().String("trace-file", "", "Trace file path when exporter=file (overrides TRACE_FILE env var)")
+	runCmd.Flags().Float64("trace-sampling-ratio", 0, "Trace sampling ratio 0.0–1.0 (overrides TRACE_SAMPLING_RATIO env var)")
+
 	// Deprecated flags (kept for backward compatibility)
 	runCmd.Flags().Bool("no-mgmt", false, "[deprecated] Use --mgmt-enabled=false instead")
 	runCmd.Flags().Bool("no-metrics", false, "[deprecated] Use --metrics-enabled=false instead")
@@ -158,6 +165,25 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 	if v, _ := cmd.Flags().GetString("log-level"); v != "" {
 		cfg.LogLevel = v
+	}
+
+	// Tracing flag overrides
+	if cmd.Flags().Changed("trace-enabled") {
+		v, _ := cmd.Flags().GetBool("trace-enabled")
+		cfg.TraceEnabled = v
+	}
+	if v, _ := cmd.Flags().GetString("trace-exporter"); v != "" {
+		cfg.TraceExporter = v
+	}
+	if v, _ := cmd.Flags().GetString("trace-endpoint"); v != "" {
+		cfg.TraceEndpoint = v
+	}
+	if v, _ := cmd.Flags().GetString("trace-file"); v != "" {
+		cfg.TraceFile = v
+	}
+	if cmd.Flags().Changed("trace-sampling-ratio") {
+		v, _ := cmd.Flags().GetFloat64("trace-sampling-ratio")
+		cfg.TraceSamplingRatio = v
 	}
 
 	// Deprecated flag handling (lower precedence than explicit boolean flags)
