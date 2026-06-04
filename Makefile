@@ -90,6 +90,23 @@ compose-down:
 	@echo "Stopping full stack..."
 	docker compose -f docker-compose-grafana.yaml down
 
+# Smoke test: verify the full stack works end-to-end
+compose-smoke: compose-up
+	@echo
+	@echo "===================="
+	@echo "Running smoke test against full stack..."
+	@sleep 5
+	@echo "Checking management API..."
+	@curl -sf http://localhost:9000/openapi.json > /dev/null && echo "  ✓ Management API OK" || (echo "  ✗ Management API FAILED" && exit 1)
+	@echo "Checking metrics..."
+	@curl -sf http://localhost:9100/metrics > /dev/null && echo "  ✓ Metrics OK" || (echo "  ✗ Metrics FAILED" && exit 1)
+	@echo "Checking Core endpoints..."
+	@curl -sf http://localhost:9000/logs > /dev/null && echo "  ✓ GET /logs OK" || (echo "  ✗ GET /logs FAILED" && exit 1)
+	@curl -sf -X DELETE http://localhost:9000/logs > /dev/null && echo "  ✓ DELETE /logs OK" || (echo "  ✗ DELETE /logs FAILED" && exit 1)
+	@curl -sf -X POST http://localhost:9000/reset > /dev/null && echo "  ✓ POST /reset OK" || (echo "  ✗ POST /reset FAILED" && exit 1)
+	@echo "Smoke test passed!"
+	@$(MAKE) compose-down
+
 # Show help
 help:
 	@echo "Available targets:"
@@ -104,3 +121,4 @@ help:
 	@echo "  compose-up   - Start full stack (Mock + Monitoring)"
 	@echo "  compose-logs - Follow logs of full stack"
 	@echo "  compose-down - Stop full stack"
+	@echo "  compose-smoke - Smoke test the full stack"

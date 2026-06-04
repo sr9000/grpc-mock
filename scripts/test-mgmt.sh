@@ -2,7 +2,8 @@
 
 # Test script for gRPC mock management server
 # This script validates:
-# - Management server endpoints (/doc, /openapi.json, /logs, /clear)
+# - Management server Core endpoints (/logs, /logs/{request_id}, DELETE /logs, /reset, /doc, /openapi.json)
+# - Deprecated endpoints (/clear) for backward compatibility
 # - gRPC mock server with echo service
 # - Recording and clearing of gRPC calls
 
@@ -251,9 +252,143 @@ test_grpc_call_recording() {
     fi
 }
 
-# Test 6: Clear logs
+# Test 6: Clear logs using DELETE /logs (Core endpoint)
+test_delete_logs() {
+    echo -e "\n${YELLOW}Test: DELETE /logs endpoint (Core)${NC}"
+
+    # First make a gRPC call to have something to clear
+    if command -v grpcurl &> /dev/null; then
+        grpcurl -plaintext -d '{"message": "Test"}' \
+            "${GRPC_HOST}:${GRPC_PORT}" EchoService/Echo > /dev/null 2>&1 || true
+    fi
+
+    # Clear using DELETE /logs
+    local clear_response
+    clear_response=$(curl -s -X DELETE "${MGMT_URL}/logs")
+
+    if echo "$clear_response" | jq -e '.status == "cleared"' > /dev/null 2>&1; then
+        print_result "DELETE /logs returns correct response" 0
+    else
+        print_result "DELETE /logs response" 1
+        echo "Response: $clear_response"
+        return 1
+    fi
+
+    # Verify logs are empty
+    local logs
+    logs=$(curl -s "${MGMT_URL}/logs")
+
+    if [ "$logs" = "[]" ]; then
+        print_result "Logs are empty after DELETE /logs" 0
+    else
+        print_result "Logs empty check after DELETE /logs" 1
+        echo "Logs: $logs"
+        return 1
+    fi
+}
+
+# Test 7: Get logs by request ID
+test_logs_by_request_id() {
+    echo -e "\n${YELLOW}Test: GET /logs/{request_id} endpoint (Core)${NC}"
+
+    if ! command -v grpcurl &> /dev/null; then
+        echo -e "${YELLOW}grpcurl not found, skipping request ID test${NC}"
+        return 0
+    fi
+
+    # Clear first
+    curl -s -X DELETE "${MGMT_URL}/logs" > /dev/null
+
+    # Make a gRPC call
+    grpcurl -plaintext -d '{"message": "FindMe"}' \
+        "${GRPC_HOST}:${GRPC_PORT}" EchoService/Echo > /dev/null 2>&1 || true
+
+    # Get the request_id from logs
+    local logs
+    logs=$(curl -s "${MGMT_URL}/logs")
+    local request_id
+    request_id=$(echo "$logs" | jq -r '.[0].request_id // empty')
+
+    if [ -z "$request_id" ]; then
+        print_result "Could not get request_id from logs" 1
+        return 1
+    fi
+
+    # Query by request_id
+    local filtered
+    filtered=$(curl -s "${MGMT_URL}/logs/${request_id}")
+
+    local count
+    count=$(echo "$filtered" | jq 'length')
+
+    if [ "$count" -ge 1 ]; then
+        print_result "GET /logs/{request_id} returns matching records" 0
+    else
+        print_result "GET /logs/{request_id} response" 1
+        echo "Response: $filtered"
+        return 1
+    fi
+
+    # Verify the record has the right request_id
+    local returned_id
+    returned_id=$(echo "$filtered" | jq -r '.[0].request_id')
+    if [ "$returned_id" = "$request_id" ]; then
+        print_result "GET /logs/{request_id} returns correct record" 0
+    else
+        print_result "GET /logs/{request_id} record check" 1
+        echo "Expected: $request_id, Got: $returned_id"
+        return 1
+    fi
+
+    # Test nonexistent request_id
+    filtered=$(curl -s "${MGMT_URL}/logs/nonexistent-id-12345")
+    count=$(echo "$filtered" | jq 'length')
+    if [ "$count" -eq 0 ]; then
+        print_result "GET /logs/{nonexistent_id} returns empty array" 0
+    else
+        print_result "GET /logs/{nonexistent_id} check" 1
+        return 1
+    fi
+}
+
+# Test 8: POST /reset (Core endpoint)
+test_reset() {
+    echo -e "\n${YELLOW}Test: POST /reset endpoint (Core)${NC}"
+
+    # Make a gRPC call to have something to reset
+    if command -v grpcurl &> /dev/null; then
+        grpcurl -plaintext -d '{"message": "ResetTest"}' \
+            "${GRPC_HOST}:${GRPC_PORT}" EchoService/Echo > /dev/null 2>&1 || true
+    fi
+
+    # Reset
+    local reset_response
+    reset_response=$(curl -s -X POST "${MGMT_URL}/reset")
+
+    if echo "$reset_response" | jq -e '.status == "reset"' > /dev/null 2>&1; then
+        print_result "POST /reset returns correct response" 0
+    else
+        print_result "POST /reset response" 1
+        echo "Response: $reset_response"
+        return 1
+    fi
+
+    # Verify logs are empty
+    local logs
+    logs=$(curl -s "${MGMT_URL}/logs")
+
+    if [ "$logs" = "[]" ]; then
+        print_result "Logs are empty after reset" 0
+    else
+        print_result "Logs empty check after reset" 1
+        echo "Logs: $logs"
+        return 1
+    fi
+}
+
+# Test 9: Clear logs using deprecated /clear endpoint
 test_clear_logs() {
-    echo -e "\n${YELLOW}Test: Clear logs endpoint${NC}"
+    echo -e "\n${YELLOW}Test: POST /clear endpoint (deprecated)${NC}"
 
     # Clear using POST
     local clear_response
@@ -280,9 +415,9 @@ test_clear_logs() {
     fi
 }
 
-# Test 7: Clear logs using DELETE method
+# Test 10: Clear logs using DELETE method on deprecated /clear
 test_clear_logs_delete() {
-    echo -e "\n${YELLOW}Test: Clear logs with DELETE method${NC}"
+    echo -e "\n${YELLOW}Test: DELETE /clear endpoint (deprecated)${NC}"
 
     # First make a gRPC call to have something to clear
     if command -v grpcurl &> /dev/null; then
@@ -295,9 +430,9 @@ test_clear_logs_delete() {
     clear_response=$(curl -s -X DELETE "${MGMT_URL}/clear")
 
     if echo "$clear_response" | jq -e '.status == "cleared"' > /dev/null 2>&1; then
-        print_result "Clear with DELETE returns correct response" 0
+        print_result "DELETE /clear returns correct response" 0
     else
-        print_result "Clear with DELETE response" 1
+        print_result "DELETE /clear response" 1
         echo "Response: $clear_response"
         return 1
     fi
@@ -307,15 +442,15 @@ test_clear_logs_delete() {
     logs=$(curl -s "${MGMT_URL}/logs")
 
     if [ "$logs" = "[]" ]; then
-        print_result "Logs are empty after DELETE clear" 0
+        print_result "Logs are empty after DELETE /clear" 0
     else
-        print_result "Logs empty check after DELETE clear" 1
+        print_result "Logs empty check after DELETE /clear" 1
         echo "Logs: $logs"
         return 1
     fi
 }
 
-# Test 8: Multiple gRPC calls recording
+# Test 11: Multiple gRPC calls recording
 test_multiple_calls() {
     echo -e "\n${YELLOW}Test: Multiple gRPC calls recording${NC}"
 
@@ -359,7 +494,7 @@ test_multiple_calls() {
     fi
 }
 
-# Test 9: Check method not allowed
+# Test 12: Check method not allowed
 test_method_not_allowed() {
     echo -e "\n${YELLOW}Test: Method not allowed responses${NC}"
 
@@ -405,6 +540,9 @@ main() {
     test_swagger_ui_assets || failed=$((failed + 1))
     test_logs_empty || failed=$((failed + 1))
     test_grpc_call_recording || failed=$((failed + 1))
+    test_delete_logs || failed=$((failed + 1))
+    test_logs_by_request_id || failed=$((failed + 1))
+    test_reset || failed=$((failed + 1))
     test_clear_logs || failed=$((failed + 1))
     test_clear_logs_delete || failed=$((failed + 1))
     test_multiple_calls || failed=$((failed + 1))

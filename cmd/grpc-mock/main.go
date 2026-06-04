@@ -62,10 +62,15 @@ func main() {
 	runCmd.Flags().StringP("port", "p", "", "Port to listen on (overrides PORT env var)")
 	runCmd.Flags().StringP("mgmt-port", "m", "", "Management server port (overrides MGMT_PORT env var)")
 	runCmd.Flags().StringP("metrics-port", "", "", "Metrics server port (overrides METRICS_PORT env var)")
-	runCmd.Flags().Bool("no-mgmt", false, "Disable management server (overrides MGMT_ENABLED env var)")
-	runCmd.Flags().Bool("no-metrics", false, "Disable metrics server (overrides METRICS_ENABLED env var)")
+	runCmd.Flags().Bool("mgmt-enabled", true, "Enable management server (overrides MGMT_ENABLED env var)")
+	runCmd.Flags().Bool("metrics-enabled", true, "Enable metrics server (overrides METRICS_ENABLED env var)")
+	runCmd.Flags().Bool("logging", true, "Enable gRPC request logging (overrides GRPC_LOGGING env var)")
 	runCmd.Flags().BoolP("reflection", "r", false, "Enable gRPC server reflection (overrides GRPC_REFLECTION env var)")
-	runCmd.Flags().Bool("no-logs", false, "Disable gRPC request logging (overrides GRPC_LOGGING env var)")
+
+	// Deprecated flags (kept for backward compatibility)
+	runCmd.Flags().Bool("no-mgmt", false, "[deprecated] Use --mgmt-enabled=false instead")
+	runCmd.Flags().Bool("no-metrics", false, "[deprecated] Use --metrics-enabled=false instead")
+	runCmd.Flags().Bool("no-logs", false, "[deprecated] Use --logging=false instead")
 
 	versionCmd := &cobra.Command{
 		Use:   "version",
@@ -103,21 +108,38 @@ func runServer(cmd *cobra.Command, args []string) error {
 	if v, _ := cmd.Flags().GetString("metrics-port"); v != "" {
 		cfg.MetricsPort = v
 	}
-	if cmd.Flags().Changed("no-mgmt") {
-		v, _ := cmd.Flags().GetBool("no-mgmt")
-		cfg.EnableMgmt = !v
+	if cmd.Flags().Changed("mgmt-enabled") {
+		v, _ := cmd.Flags().GetBool("mgmt-enabled")
+		cfg.EnableMgmt = v
 	}
-	if cmd.Flags().Changed("no-metrics") {
-		v, _ := cmd.Flags().GetBool("no-metrics")
-		cfg.EnableMetrics = !v
+	if cmd.Flags().Changed("metrics-enabled") {
+		v, _ := cmd.Flags().GetBool("metrics-enabled")
+		cfg.EnableMetrics = v
+	}
+	if cmd.Flags().Changed("logging") {
+		v, _ := cmd.Flags().GetBool("logging")
+		cfg.EnableLogging = v
 	}
 	if cmd.Flags().Changed("reflection") {
 		v, _ := cmd.Flags().GetBool("reflection")
 		cfg.EnableReflection = v
 	}
-	if cmd.Flags().Changed("no-logs") {
+
+	// Deprecated flag handling (lower precedence than explicit boolean flags)
+	if cmd.Flags().Changed("no-mgmt") && !cmd.Flags().Changed("mgmt-enabled") {
+		v, _ := cmd.Flags().GetBool("no-mgmt")
+		cfg.EnableMgmt = !v
+		log.Printf("[deprecated] --no-mgmt is deprecated, use --mgmt-enabled=false instead")
+	}
+	if cmd.Flags().Changed("no-metrics") && !cmd.Flags().Changed("metrics-enabled") {
+		v, _ := cmd.Flags().GetBool("no-metrics")
+		cfg.EnableMetrics = !v
+		log.Printf("[deprecated] --no-metrics is deprecated, use --metrics-enabled=false instead")
+	}
+	if cmd.Flags().Changed("no-logs") && !cmd.Flags().Changed("logging") {
 		v, _ := cmd.Flags().GetBool("no-logs")
 		cfg.EnableLogging = !v
+		log.Printf("[deprecated] --no-logs is deprecated, use --logging=false instead")
 	}
 
 	// Positional args have highest precedence: run [host] [port]
@@ -225,10 +247,10 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 		}
 
 		record := recorder.CallRecord{
-			RequestID: reqID,
-			Method:    info.FullMethod,
-			Timestamp: startTime,
-			Request:   req,
+			RequestID:   reqID,
+			Method:      info.FullMethod,
+			Timestamp:   startTime,
+			Request:     req,
 		}
 
 		// Handle panics

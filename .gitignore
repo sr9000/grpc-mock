@@ -32,6 +32,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Python cache
+__pycache__/
+
 /internal/genproto/*
 /internal/stubs/*
 /protos/*

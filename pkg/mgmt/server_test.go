@@ -1,7 +1,9 @@
 package mgmt
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"grpc-mock/pkg/recorder"
 	"io"
 	"net/http"
@@ -75,20 +77,20 @@ func TestHandleLogsEmpty(t *testing.T) {
 func TestHandleLogsMethodNotAllowed(t *testing.T) {
 	rec := recorder.New()
 	s := New(rec, "9000")
+	r := s.router()
 
-	methods := []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch}
+	methods := []string{http.MethodPost, http.MethodPut, http.MethodPatch}
 
 	for _, method := range methods {
 		req := httptest.NewRequest(method, "/logs", nil)
 		w := httptest.NewRecorder()
-
-		s.handleLogs(w, req)
+		r.ServeHTTP(w, req)
 
 		resp := w.Result()
 		resp.Body.Close()
 
 		if resp.StatusCode != http.StatusMethodNotAllowed {
-			t.Errorf("Expected status 405 for %s, got %d", method, resp.StatusCode)
+			t.Errorf("Expected status 405 for %s /logs, got %d", method, resp.StatusCode)
 		}
 	}
 }
@@ -160,21 +162,244 @@ func TestHandleClearDelete(t *testing.T) {
 func TestHandleClearMethodNotAllowed(t *testing.T) {
 	rec := recorder.New()
 	s := New(rec, "9000")
+	r := s.router()
 
 	methods := []string{http.MethodGet, http.MethodPut, http.MethodPatch}
 
 	for _, method := range methods {
 		req := httptest.NewRequest(method, "/clear", nil)
 		w := httptest.NewRecorder()
-
-		s.handleClear(w, req)
+		r.ServeHTTP(w, req)
 
 		resp := w.Result()
 		resp.Body.Close()
 
 		if resp.StatusCode != http.StatusMethodNotAllowed {
-			t.Errorf("Expected status 405 for %s, got %d", method, resp.StatusCode)
+			t.Errorf("Expected status 405 for %s /clear, got %d", method, resp.StatusCode)
 		}
+	}
+}
+
+func TestHandleLogsByRequestID(t *testing.T) {
+	rec := recorder.New()
+	rec.Record(recorder.CallRecord{
+		RequestID: "id-1",
+		Method:    "/TestService/MethodA",
+		Timestamp: time.Now(),
+	})
+	rec.Record(recorder.CallRecord{
+		RequestID: "id-2",
+		Method:    "/TestService/MethodB",
+		Timestamp: time.Now(),
+	})
+	rec.Record(recorder.CallRecord{
+		RequestID: "id-1",
+		Method:    "/TestService/MethodC",
+		Timestamp: time.Now(),
+	})
+
+	s := New(rec, "9000")
+	r := s.router()
+
+	// Test existing request_id
+	req := httptest.NewRequest(http.MethodGet, "/logs/id-1", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var records []recorder.CallRecord
+	if err := json.Unmarshal(body, &records); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if len(records) != 2 {
+		t.Fatalf("Expected 2 records for id-1, got %d", len(records))
+	}
+
+	// Test nonexistent request_id
+	req = httptest.NewRequest(http.MethodGet, "/logs/nonexistent", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp = w.Result()
+	defer resp.Body.Close()
+
+	body, _ = io.ReadAll(resp.Body)
+	if err := json.Unmarshal(body, &records); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if len(records) != 0 {
+		t.Fatalf("Expected 0 records for nonexistent id, got %d", len(records))
+	}
+}
+
+func TestHandleDeleteLogs(t *testing.T) {
+	rec := recorder.New()
+	rec.Record(recorder.CallRecord{
+		RequestID: "test-id",
+		Method:    "/TestService/TestMethod",
+		Timestamp: time.Now(),
+	})
+
+	s := New(rec, "9000")
+
+	req := httptest.NewRequest(http.MethodDelete, "/logs", nil)
+	w := httptest.NewRecorder()
+
+	s.handleDeleteLogs(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]string
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if result["status"] != "cleared" {
+		t.Errorf("Expected status 'cleared', got '%s'", result["status"])
+	}
+
+	if len(rec.GetRecords()) != 0 {
+		t.Error("Expected records to be cleared")
+	}
+}
+
+func TestHandleReset(t *testing.T) {
+	rec := recorder.New()
+	rec.Record(recorder.CallRecord{
+		RequestID: "test-id",
+		Method:    "/TestService/TestMethod",
+		Timestamp: time.Now(),
+	})
+
+	resetCalled := false
+	s := New(rec, "9000", WithReset(func(ctx context.Context) error {
+		resetCalled = true
+		return nil
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/reset", nil)
+	w := httptest.NewRecorder()
+
+	s.handleReset(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]string
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if result["status"] != "reset" {
+		t.Errorf("Expected status 'reset', got '%s'", result["status"])
+	}
+
+	if len(rec.GetRecords()) != 0 {
+		t.Error("Expected records to be cleared after reset")
+	}
+
+	if !resetCalled {
+		t.Error("Expected reset callback to be called")
+	}
+}
+
+func TestHandleResetNoCallback(t *testing.T) {
+	rec := recorder.New()
+	rec.Record(recorder.CallRecord{
+		RequestID: "test-id",
+		Method:    "/TestService/TestMethod",
+		Timestamp: time.Now(),
+	})
+
+	s := New(rec, "9000")
+
+	req := httptest.NewRequest(http.MethodPost, "/reset", nil)
+	w := httptest.NewRecorder()
+
+	s.handleReset(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	if len(rec.GetRecords()) != 0 {
+		t.Error("Expected records to be cleared after reset even without callback")
+	}
+}
+
+func TestHandleResetCallbackError(t *testing.T) {
+	rec := recorder.New()
+	rec.Record(recorder.CallRecord{
+		RequestID: "test-id",
+		Method:    "/TestService/TestMethod",
+		Timestamp: time.Now(),
+	})
+
+	s := New(rec, "9000", WithReset(func(ctx context.Context) error {
+		return fmt.Errorf("reset failed")
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/reset", nil)
+	w := httptest.NewRecorder()
+
+	s.handleReset(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", resp.StatusCode)
+	}
+}
+
+func TestRouterIntegration(t *testing.T) {
+	rec := recorder.New()
+	s := New(rec, "9000")
+	r := s.router()
+
+	// Test DELETE /logs via router
+	rec.Record(recorder.CallRecord{
+		RequestID: "test-id",
+		Method:    "/TestService/TestMethod",
+		Timestamp: time.Now(),
+	})
+
+	req := httptest.NewRequest(http.MethodDelete, "/logs", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200 for DELETE /logs, got %d", resp.StatusCode)
+	}
+
+	if len(rec.GetRecords()) != 0 {
+		t.Error("Expected records to be cleared after DELETE /logs")
 	}
 }
 
@@ -213,11 +438,11 @@ func TestHandleDoc(t *testing.T) {
 func TestHandleDocMethodNotAllowed(t *testing.T) {
 	rec := recorder.New()
 	s := New(rec, "9000")
+	r := s.router()
 
 	req := httptest.NewRequest(http.MethodPost, "/doc", nil)
 	w := httptest.NewRecorder()
-
-	s.handleDoc(w, req)
+	r.ServeHTTP(w, req)
 
 	resp := w.Result()
 	resp.Body.Close()

@@ -197,6 +197,41 @@ func TestConcurrentAccess(t *testing.T) {
 	// Should not panic and should complete without data races
 }
 
+func TestGetRecordsByRequestID(t *testing.T) {
+	r := New()
+
+	r.Record(CallRecord{
+		RequestID: "id-1",
+		Method:    "/TestService/MethodA",
+		Timestamp: time.Now(),
+	})
+	r.Record(CallRecord{
+		RequestID: "id-2",
+		Method:    "/TestService/MethodB",
+		Timestamp: time.Now(),
+	})
+	r.Record(CallRecord{
+		RequestID: "id-1",
+		Method:    "/TestService/MethodC",
+		Timestamp: time.Now(),
+	})
+
+	records := r.GetRecordsByRequestID("id-1")
+	if len(records) != 2 {
+		t.Fatalf("Expected 2 records for id-1, got %d", len(records))
+	}
+
+	records = r.GetRecordsByRequestID("id-2")
+	if len(records) != 1 {
+		t.Fatalf("Expected 1 record for id-2, got %d", len(records))
+	}
+
+	records = r.GetRecordsByRequestID("nonexistent")
+	if len(records) != 0 {
+		t.Fatalf("Expected 0 records for nonexistent id, got %d", len(records))
+	}
+}
+
 func TestGetRecordsReturnsCopy(t *testing.T) {
 	r := New()
 

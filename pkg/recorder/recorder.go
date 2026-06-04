@@ -48,6 +48,18 @@ func (r *Recorder) GetRecords() []CallRecord {
 	return result
 }
 
+// GetRecordsByRequestID returns recorded calls that match requestID.
+func (r *Recorder) GetRecordsByRequestID(requestID string) []CallRecord {
+	all := r.GetRecords()
+	filtered := make([]CallRecord, 0)
+	for _, record := range all {
+		if record.RequestID == requestID {
+			filtered = append(filtered, record)
+		}
+	}
+	return filtered
+}
+
 // Clear removes all recorded calls
 func (r *Recorder) Clear() {
 	r.mu.Lock()

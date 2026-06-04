@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "gRPC Mock Management API",
-    "description": "Management API for gRPC mock server used in e2e testing. Provides endpoints to retrieve recorded gRPC calls and clear logs.",
-    "version": "1.0.0"
+    "description": "Management API for gRPC mock server used in e2e testing. Provides endpoints to retrieve recorded gRPC calls, filter by request ID, clear logs, and reset state.",
+    "version": "2.0.0"
   },
   "servers": [
     {
@@ -35,26 +35,71 @@
             "description": "Failed to serialize logs"
           }
         }
-      }
-    },
-    "/clear": {
-      "post": {
+      },
+      "delete": {
         "summary": "Clear all recorded gRPC calls",
         "description": "Removes all recorded gRPC calls from memory.",
-        "operationId": "clearLogs",
+        "operationId": "deleteLogs",
         "responses": {
           "200": {
             "description": "Successfully cleared logs",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "example": "cleared"
-                    }
+                  "$ref": "#/components/schemas/ClearedResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/logs/{request_id}": {
+      "get": {
+        "summary": "Get recorded calls by request ID",
+        "description": "Returns all recorded gRPC calls matching the given request ID.",
+        "operationId": "getLogsByRequestId",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The request ID to filter by"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved logs for request ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CallRecord"
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/clear": {
+      "post": {
+        "summary": "Clear all recorded gRPC calls (deprecated)",
+        "description": "Deprecated: use DELETE /logs instead. Removes all recorded gRPC calls from memory.",
+        "operationId": "clearLogs",
+        "deprecated": true,
+        "responses": {
+          "200": {
+            "description": "Successfully cleared logs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClearedResponse"
                 }
               }
             }
@@ -62,25 +107,42 @@
         }
       },
       "delete": {
-        "summary": "Clear all recorded gRPC calls",
-        "description": "Removes all recorded gRPC calls from memory.",
+        "summary": "Clear all recorded gRPC calls (deprecated)",
+        "description": "Deprecated: use DELETE /logs instead. Removes all recorded gRPC calls from memory.",
         "operationId": "clearLogsDelete",
+        "deprecated": true,
         "responses": {
           "200": {
             "description": "Successfully cleared logs",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "example": "cleared"
-                    }
-                  }
+                  "$ref": "#/components/schemas/ClearedResponse"
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/reset": {
+      "post": {
+        "summary": "Soft reset",
+        "description": "Clears all recorded calls and resets any in-memory state. Used for e2e test teardown.",
+        "operationId": "reset",
+        "responses": {
+          "200": {
+            "description": "Successfully reset",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Reset failed"
           }
         }
       }
@@ -162,6 +224,24 @@
             "type": "integer",
             "format": "int64",
             "description": "Request duration in milliseconds"
+          }
+        }
+      },
+      "ClearedResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "cleared"
+          }
+        }
+      },
+      "ResetResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "reset"
           }
         }
       }
