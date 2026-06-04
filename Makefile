@@ -1,4 +1,4 @@
-.PHONY: all build run gen-proto gen-wire clean help
+.PHONY: all build run gen-proto gen-wire clean help validate-observability
 
 # Default target: show help when `make` is called without arguments
 .DEFAULT_GOAL := help
@@ -91,21 +91,18 @@ compose-down:
 	docker compose -f docker-compose-grafana.yaml down
 
 # Smoke test: verify the full stack works end-to-end
-compose-smoke: compose-up
+compose-smoke:
 	@echo
 	@echo "===================="
-	@echo "Running smoke test against full stack..."
-	@sleep 5
-	@echo "Checking management API..."
-	@curl -sf http://localhost:9000/openapi.json > /dev/null && echo "  ✓ Management API OK" || (echo "  ✗ Management API FAILED" && exit 1)
-	@echo "Checking metrics..."
-	@curl -sf http://localhost:9100/metrics > /dev/null && echo "  ✓ Metrics OK" || (echo "  ✗ Metrics FAILED" && exit 1)
-	@echo "Checking Core endpoints..."
-	@curl -sf http://localhost:9000/logs > /dev/null && echo "  ✓ GET /logs OK" || (echo "  ✗ GET /logs FAILED" && exit 1)
-	@curl -sf -X DELETE http://localhost:9000/logs > /dev/null && echo "  ✓ DELETE /logs OK" || (echo "  ✗ DELETE /logs FAILED" && exit 1)
-	@curl -sf -X POST http://localhost:9000/reset > /dev/null && echo "  ✓ POST /reset OK" || (echo "  ✗ POST /reset FAILED" && exit 1)
-	@echo "Smoke test passed!"
-	@$(MAKE) compose-down
+	@echo "Running observability stack smoke test..."
+	./scripts/validate-observability-stack.sh
+
+# Validate the full observability stack (Prometheus + Grafana + metrics + dashboards)
+validate-observability:
+	@echo
+	@echo "===================="
+	@echo "Validating observability stack..."
+	./scripts/validate-observability-stack.sh
 
 # Show help
 help:
@@ -122,3 +119,4 @@ help:
 	@echo "  compose-logs - Follow logs of full stack"
 	@echo "  compose-down - Stop full stack"
 	@echo "  compose-smoke - Smoke test the full stack"
+	@echo "  validate-observability - Validate full observability stack (Prometheus + Grafana + dashboards)"
