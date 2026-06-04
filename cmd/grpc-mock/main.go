@@ -8,7 +8,6 @@ import (
 	"grpc-mock/pkg/mgmt"
 	"grpc-mock/pkg/observability"
 	"grpc-mock/pkg/recorder"
-	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -18,26 +17,35 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 )
 
 type Config struct {
-	Host                    string `env:"HOST" envDefault:"0.0.0.0"`
-	Port                    string `env:"PORT" envDefault:"50051"`
-	MgmtPort                string `env:"MGMT_PORT" envDefault:"9000"`
-	MetricsPort             string `env:"METRICS_PORT" envDefault:"9100"`
-	EnableMgmt              bool   `env:"MGMT_ENABLED" envDefault:"true"`
-	EnableMetrics           bool   `env:"METRICS_ENABLED" envDefault:"true"`
-	EnableReflection        bool   `env:"GRPC_REFLECTION" envDefault:"false"`
-	EnableLogging           bool   `env:"GRPC_LOGGING" envDefault:"true"`
-	LogFormat               string `env:"LOG_FORMAT" envDefault:"json"`
-	LogOutput               string `env:"LOG_OUTPUT" envDefault:"stdout"`
-	LogFile                 string `env:"LOG_FILE"`
-	LogLevel                string `env:"LOG_LEVEL" envDefault:"info"`
-	RequestIDHeaders        string `env:"REQUEST_ID_HEADERS"`
-	RequestIDResponseHeader string `env:"REQUEST_ID_RESPONSE_HEADER" envDefault:"x-request-id"`
+	Host                    string  `env:"HOST" envDefault:"0.0.0.0"`
+	Port                    string  `env:"PORT" envDefault:"50051"`
+	MgmtPort                string  `env:"MGMT_PORT" envDefault:"9000"`
+	MetricsPort             string  `env:"METRICS_PORT" envDefault:"9100"`
+	EnableMgmt              bool    `env:"MGMT_ENABLED" envDefault:"true"`
+	EnableMetrics           bool    `env:"METRICS_ENABLED" envDefault:"true"`
+	EnableReflection        bool    `env:"GRPC_REFLECTION" envDefault:"false"`
+	EnableLogging           bool    `env:"GRPC_LOGGING" envDefault:"true"`
+	LogFormat               string  `env:"LOG_FORMAT" envDefault:"json"`
+	LogOutput               string  `env:"LOG_OUTPUT" envDefault:"stdout"`
+	LogFile                 string  `env:"LOG_FILE"`
+	LogLevel                string  `env:"LOG_LEVEL" envDefault:"info"`
+	RequestIDHeaders        string  `env:"REQUEST_ID_HEADERS"`
+	RequestIDResponseHeader string  `env:"REQUEST_ID_RESPONSE_HEADER" envDefault:"x-request-id"`
+	TraceEnabled            bool    `env:"TRACE_ENABLED" envDefault:"false"`
+	TraceExporter           string  `env:"TRACE_EXPORTER" envDefault:"none"`
+	TraceEndpoint           string  `env:"TRACE_ENDPOINT"`
+	TraceFile               string  `env:"TRACE_FILE" envDefault:"./traces.json"`
+	TraceSamplingRatio      float64 `env:"TRACE_SAMPLING_RATIO" envDefault:"1.0"`
 }
 
 func loadConfig() (Config, error) {
@@ -188,6 +196,24 @@ func runServer(cmd *cobra.Command, args []string) error {
 		defer logCloser.Close()
 	}
 
+	// Initialise OpenTelemetry tracing.
+	traceShutdown, err := observability.SetupTracing(context.Background(), observability.TraceConfig{
+		Enabled:       cfg.TraceEnabled,
+		Exporter:      cfg.TraceExporter,
+		Endpoint:      cfg.TraceEndpoint,
+		File:          cfg.TraceFile,
+		SamplingRatio: cfg.TraceSamplingRatio,
+		ServiceName:   "grpc-mock",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to initialize tracing: %w", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = traceShutdown(shutdownCtx)
+	}()
+
 	addr := net.JoinHostPort(cfg.Host, cfg.Port)
 
 	// Log effective configuration before starting.
@@ -284,15 +310,28 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogging bool, baseLogger zerolog.Logger, requestIDHeaders string, requestIDResponseHeader string) grpc.UnaryServerInterceptor {
 	allowedHeaders := observability.NormalizeHeaderList(requestIDHeaders, observability.DefaultRequestIDHeaders)
+	tracer := otel.Tracer("grpc-mock")
 
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 		startTime := time.Now()
 
+		// Extract propagated trace context from inbound gRPC metadata.
+		if grpcMD, ok := metadata.FromIncomingContext(ctx); ok {
+			ctx = otel.GetTextMapPropagator().Extract(ctx, &metadataCarrier{md: grpcMD})
+		}
+
+		// Start a server span named by the full gRPC method.
+		ctx, span := tracer.Start(ctx, info.FullMethod,
+			trace.WithSpanKind(trace.SpanKindServer),
+			trace.WithAttributes(attribute.String("rpc.method", info.FullMethod)),
+		)
+		defer span.End()
+
 		// Resolve request-id from inbound gRPC metadata (fallback to generated).
 		var reqID string
-		if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if grpcMD, ok := metadata.FromIncomingContext(ctx); ok {
 			reqID = observability.ResolveRequestID(func(key string) string {
-				if vals := md.Get(key); len(vals) > 0 {
+				if vals := grpcMD.Get(key); len(vals) > 0 {
 					return vals[0]
 				}
 				return ""
@@ -306,20 +345,31 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 			_ = grpc.SetHeader(ctx, metadata.Pairs(requestIDResponseHeader, reqID))
 		}
 
+		// Extract trace-id from the span and enrich metadata + logger.
+		var traceID string
+		if sc := span.SpanContext(); sc.IsValid() {
+			traceID = sc.TraceID().String()
+		}
+
 		// Store request metadata in context.
-		md := &observability.RequestMetadata{
+		reqMD := &observability.RequestMetadata{
 			RequestID: reqID,
+			TraceID:   traceID,
 			Method:    info.FullMethod,
 		}
-		ctx = observability.WithRequestMetadata(ctx, md)
+		ctx = observability.WithRequestMetadata(ctx, reqMD)
 		ctx = observability.WithRequestID(ctx, reqID)
 		ctx = observability.WithMethod(ctx, info.FullMethod)
+		ctx = observability.WithTraceID(ctx, traceID)
 
-		// Derive a per-request logger with request_id and method fields.
+		// Derive a per-request logger with request_id, trace_id, and method fields.
 		reqLogger := baseLogger.With().
 			Str("request_id", reqID).
 			Str("method", info.FullMethod).
 			Logger()
+		if traceID != "" {
+			reqLogger = reqLogger.With().Str("trace_id", traceID).Logger()
+		}
 		ctx = observability.WithLogger(ctx, reqLogger)
 
 		if enableLogging {
@@ -338,6 +388,9 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 			if r := recover(); r != nil {
 				record.DurationMs = time.Since(startTime).Milliseconds()
 				record.Panic = fmt.Sprintf("%v", r)
+				span.RecordError(fmt.Errorf("panic: %v", r))
+				span.SetStatus(codes.Error, record.Panic)
+				span.SetAttributes(attribute.String("rpc.status_code", "panic"))
 				rec.Record(record)
 				if enableLogging {
 					reqLogger.Error().
@@ -364,6 +417,9 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 
 		if err != nil {
 			record.Error = err.Error()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+			span.SetAttributes(attribute.String("rpc.status_code", "error"))
 			if enableLogging {
 				reqLogger.Error().
 					Int64("duration_ms", record.DurationMs).
@@ -377,6 +433,7 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 				m.RecordError(info.FullMethod, record.Error)
 			}
 		} else {
+			span.SetAttributes(attribute.String("rpc.status_code", "ok"))
 			if enableLogging {
 				reqLogger.Info().
 					Int64("duration_ms", record.DurationMs).
@@ -394,5 +451,26 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 	}
 }
 
-// Silence unused import guard.
-var _ io.Closer = (io.Closer)(nil)
+// metadataCarrier adapts gRPC metadata.MD to the otel TextMapCarrier interface.
+type metadataCarrier struct {
+	md metadata.MD
+}
+
+func (c *metadataCarrier) Get(key string) string {
+	if vals := c.md.Get(key); len(vals) > 0 {
+		return vals[0]
+	}
+	return ""
+}
+
+func (c *metadataCarrier) Set(key, value string) {
+	c.md.Set(key, value)
+}
+
+func (c *metadataCarrier) Keys() []string {
+	out := make([]string, 0, len(c.md))
+	for k := range c.md {
+		out = append(out, k)
+	}
+	return out
+}
