@@ -2,14 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"grpc-mock/internal/app"
-	"grpc-mock/pkg/ctxkeys"
 	"grpc-mock/pkg/metrics"
 	"grpc-mock/pkg/mgmt"
+	"grpc-mock/pkg/observability"
 	"grpc-mock/pkg/recorder"
-	"log"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	"github.com/caarlos0/env/v11"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -129,17 +129,14 @@ func runServer(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("no-mgmt") && !cmd.Flags().Changed("mgmt-enabled") {
 		v, _ := cmd.Flags().GetBool("no-mgmt")
 		cfg.EnableMgmt = !v
-		log.Printf("[deprecated] --no-mgmt is deprecated, use --mgmt-enabled=false instead")
 	}
 	if cmd.Flags().Changed("no-metrics") && !cmd.Flags().Changed("metrics-enabled") {
 		v, _ := cmd.Flags().GetBool("no-metrics")
 		cfg.EnableMetrics = !v
-		log.Printf("[deprecated] --no-metrics is deprecated, use --metrics-enabled=false instead")
 	}
 	if cmd.Flags().Changed("no-logs") && !cmd.Flags().Changed("logging") {
 		v, _ := cmd.Flags().GetBool("no-logs")
 		cfg.EnableLogging = !v
-		log.Printf("[deprecated] --no-logs is deprecated, use --logging=false instead")
 	}
 
 	// Positional args have highest precedence: run [host] [port]
@@ -150,11 +147,32 @@ func runServer(cmd *cobra.Command, args []string) error {
 		cfg.Port = args[1]
 	}
 
+	// Build the base structured logger.
+	baseLogger, logCloser, err := observability.NewLogger(observability.LogConfig{
+		Format: "json",
+		Output: "stdout",
+		Level:  "info",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create logger: %w", err)
+	}
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
+
 	addr := net.JoinHostPort(cfg.Host, cfg.Port)
 
 	// Log effective configuration before starting.
-	log.Printf("starting gRPC server with config: host=%s port=%s mgmt-port=%s metrics-port=%s mgmt-enabled=%t metrics-enabled=%t reflection=%t logging=%t",
-		cfg.Host, cfg.Port, cfg.MgmtPort, cfg.MetricsPort, cfg.EnableMgmt, cfg.EnableMetrics, cfg.EnableReflection, cfg.EnableLogging)
+	baseLogger.Info().
+		Str("host", cfg.Host).
+		Str("port", cfg.Port).
+		Str("mgmt_port", cfg.MgmtPort).
+		Str("metrics_port", cfg.MetricsPort).
+		Bool("mgmt_enabled", cfg.EnableMgmt).
+		Bool("metrics_enabled", cfg.EnableMetrics).
+		Bool("reflection", cfg.EnableReflection).
+		Bool("logging", cfg.EnableLogging).
+		Msg("starting gRPC server")
 
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -172,7 +190,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	var opts []grpc.ServerOption
 	// Always use recording interceptor for e2e testing
-	opts = append(opts, grpc.UnaryInterceptor(recordingInterceptor(rec, metricsServer, cfg.EnableLogging)))
+	opts = append(opts, grpc.UnaryInterceptor(recordingInterceptor(rec, metricsServer, cfg.EnableLogging, baseLogger)))
 	grpcServer := grpc.NewServer(opts...)
 
 	if _, err := app.InitializeApp(grpcServer, cfg.EnableLogging); err != nil {
@@ -204,12 +222,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
-			log.Fatalf("failed to serve: %v", err)
+			baseLogger.Fatal().Err(err).Msg("failed to serve")
 		}
 	}()
 
 	<-ctx.Done()
-	log.Println("shutdown signal received")
+	baseLogger.Info().Msg("shutdown signal received")
 
 	grpcServer.GracefulStop()
 
@@ -218,7 +236,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := mgmtServer.Stop(shutdownCtx); err != nil {
-			log.Printf("management server shutdown error: %v", err)
+			baseLogger.Error().Err(err).Msg("management server shutdown error")
 		}
 	}
 
@@ -227,30 +245,45 @@ func runServer(cmd *cobra.Command, args []string) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := metricsServer.Stop(shutdownCtx); err != nil {
-			log.Printf("metrics server shutdown error: %v", err)
+			baseLogger.Error().Err(err).Msg("metrics server shutdown error")
 		}
 	}
 
-	log.Println("server stopped")
+	baseLogger.Info().Msg("server stopped")
 
 	return nil
 }
 
-func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogging bool) grpc.UnaryServerInterceptor {
+func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogging bool, baseLogger zerolog.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
-		reqID := rand.Text()
-		ctx = context.WithValue(ctx, ctxkeys.RequestID{}, reqID)
+		reqID := observability.GenerateRequestID()
 		startTime := time.Now()
 
+		// Store request metadata in context.
+		md := &observability.RequestMetadata{
+			RequestID: reqID,
+			Method:    info.FullMethod,
+		}
+		ctx = observability.WithRequestMetadata(ctx, md)
+		ctx = observability.WithRequestID(ctx, reqID)
+		ctx = observability.WithMethod(ctx, info.FullMethod)
+
+		// Derive a per-request logger with request_id and method fields.
+		reqLogger := baseLogger.With().
+			Str("request_id", reqID).
+			Str("method", info.FullMethod).
+			Logger()
+		ctx = observability.WithLogger(ctx, reqLogger)
+
 		if enableLogging {
-			log.Printf("[req_id=%s] gRPC request: %s", reqID, info.FullMethod)
+			reqLogger.Info().Msg("gRPC request started")
 		}
 
 		record := recorder.CallRecord{
-			RequestID:   reqID,
-			Method:      info.FullMethod,
-			Timestamp:   startTime,
-			Request:     req,
+			RequestID: reqID,
+			Method:    info.FullMethod,
+			Timestamp: startTime,
+			Request:   req,
 		}
 
 		// Handle panics
@@ -260,7 +293,11 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 				record.Panic = fmt.Sprintf("%v", r)
 				rec.Record(record)
 				if enableLogging {
-					log.Printf("[req_id=%s] gRPC panic: %s: %v", reqID, info.FullMethod, r)
+					reqLogger.Error().
+						Int64("duration_ms", record.DurationMs).
+						Str("status", "panic").
+						Interface("panic", r).
+						Msg("gRPC panic")
 				}
 				// Record metrics for panic
 				if m != nil {
@@ -281,7 +318,11 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 		if err != nil {
 			record.Error = err.Error()
 			if enableLogging {
-				log.Printf("[req_id=%s] gRPC error: %s: %v", reqID, info.FullMethod, err)
+				reqLogger.Error().
+					Int64("duration_ms", record.DurationMs).
+					Str("status", "error").
+					Err(err).
+					Msg("gRPC error")
 			}
 			// Record metrics for error
 			if m != nil {
@@ -290,7 +331,10 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 			}
 		} else {
 			if enableLogging {
-				log.Printf("[req_id=%s] gRPC success: %s", reqID, info.FullMethod)
+				reqLogger.Info().
+					Int64("duration_ms", record.DurationMs).
+					Str("status", "success").
+					Msg("gRPC success")
 			}
 			// Record request metrics for success
 			if m != nil {
@@ -302,3 +346,6 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 		return resp, err
 	}
 }
+
+// Silence unused import guard.
+var _ io.Closer = (io.Closer)(nil)

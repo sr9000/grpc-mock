@@ -1,9 +1,11 @@
 package main
+
 import (
 	"fmt"
 	"log"
 	"os"
 )
+
 func main() {
 	var dryRun bool
 	var verbose bool
