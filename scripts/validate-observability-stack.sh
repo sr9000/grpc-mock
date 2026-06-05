@@ -67,18 +67,28 @@ wait_for_http "tempo" "http://127.0.0.1:3200/ready"
 wait_for_http "collector" "http://127.0.0.1:13133/"
 wait_for_http "grafana" "http://127.0.0.1:3000/api/health"
 
-echo "[4/6] Sending plain and traced gRPC requests"
-# Send a plain request via the management API (triggers internal gRPC call recording)
-# Note: gRPC calls require grpcurl; we use the mgmt API as a basic smoke test
-curl -fsS "http://127.0.0.1:9000/logs" >/dev/null
+echo "[4/6] Sending correlated gRPC request"
 
-# Send a traced request if grpcurl is available
-if command -v grpcurl >/dev/null 2>&1; then
-  grpcurl -plaintext \
-    -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
-    -d '{"message":"traced"}' \
-    localhost:50051 EchoService/Echo || true
+# Generate deterministic per-run identifiers for correlation
+SMOKE_REQ_ID="smoke-$(date +%s)-$$"
+SMOKE_TRACE_ID="$(printf '%032x' $((RANDOM * RANDOM * RANDOM + RANDOM)))"
+SMOKE_TRACEPARENT="00-${SMOKE_TRACE_ID}-$(printf '%016x' $RANDOM)-01"
+
+echo "  request_id: ${SMOKE_REQ_ID}"
+echo "  trace_id:   ${SMOKE_TRACE_ID}"
+
+# grpcurl is required for the correlated smoke request
+if ! command -v grpcurl >/dev/null 2>&1; then
+  echo "ERROR: grpcurl is required for the observability smoke test but was not found." >&2
+  echo "Install grpcurl: https://github.com/fullstorydev/grpcurl#installation" >&2
+  exit 1
 fi
+
+grpcurl -plaintext \
+  -H "x-request-id: ${SMOKE_REQ_ID}" \
+  -H "traceparent: ${SMOKE_TRACEPARENT}" \
+  -d '{"message":"smoke"}' \
+  localhost:50051 EchoService/Echo || true
 
 echo "[5/6] Verifying metrics, Prometheus, Grafana, traces, and logs"
 if ! curl -fsS "http://127.0.0.1:9100/metrics" | grep -q 'grpc_requests_total'; then
