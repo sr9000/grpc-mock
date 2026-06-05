@@ -82,7 +82,7 @@ func New(port string) *Metrics {
 		),
 		InFlight: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Name: "grpc_in_flight",
+				Name: "grpc_requests_in_flight",
 				Help: "Number of in-flight requests",
 			},
 			[]string{"method"},

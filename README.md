@@ -271,7 +271,7 @@ open http://localhost:9000/doc
 | `grpc_request_duration_seconds` | Histogram | `method`, `status` | Гистограмма латентности запросов            |
 | `grpc_errors_total`             | Counter   | `method`, `kind`   | Количество ошибок по типу (error rate)      |
 | `grpc_panics_total`             | Counter   | `method`, `kind`   | Количество паник по типу (panic rate)       |
-| `grpc_in_flight`                | Gauge     | `method`           | Количество обрабатываемых запросов          |
+| `grpc_requests_in_flight`       | Gauge     | `method`           | Количество обрабатываемых запросов          |
 
 ### Метрики ресурсов:
 
