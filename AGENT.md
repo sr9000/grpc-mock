@@ -43,15 +43,16 @@ Most historical gaps are closed. Verified in code:
 
 ## Remaining friction (open)
 
-These are the genuinely-open items; the full cross-repo list lives in `../CONTRACTS.md` §8.
+The previously-open items are now resolved (tracked in `../CONTRACTS.md` §9):
 
-1. **`make run` is broken** — it runs `go run ./cmd/grpc-mock` without the `run` subcommand, so it prints help
-   instead of starting the server. Should be `go run ./cmd/grpc-mock run` (matches `openapi-mock`).
-2. **`.env.example` uses `GRPC_PORT`**, but the server reads `PORT`; `GRPC_PORT` only maps the host port in the
-   observability compose. Add `PORT`/`HOST` (and a comment) to avoid confusion.
-3. **No `.env` auto-wiring in the Makefile** — `openapi-mock`'s `compose-*`/`docker-dev` targets pass `--env-file`;
-   `grpc-mock` does not.
-4. **README flag table** omits `--request-id-headers` / `--request-id-response-header`, though both flags exist.
+- ✅ `make run` now invokes the `run` subcommand.
+- ✅ `.env.example` exposes app-level `HOST`/`PORT` (with a note on the compose-only `GRPC_PORT`).
+- ✅ Makefile auto-wires `.env` into `docker-dev`/`compose-*`.
+- ✅ README flag table documents `--request-id-headers` / `--request-id-response-header`.
+- ✅ Dev compose renamed to `docker-compose.dev.yaml`; updater files aligned (`discovery.go`/`stubs.go`/`wire.go`).
+
+Only by-design differences remain (transport defaults, `GRPC_LOGGING` vs `HTTP_LOGGING` env var, deprecated `--no-*`
+flags). See `../CONTRACTS.md` §9.
 
 ## Suggested role in the unified direction
 

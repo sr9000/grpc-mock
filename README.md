@@ -125,8 +125,10 @@
 | `--trace-exporter`       |       | Экспортер трейсов: none/file/otlp-http (переопределяет `TRACE_EXPORTER`).        |
 | `--trace-endpoint`       |       | OTLP HTTP endpoint, напр. otel-collector:4318 (переопределяет `TRACE_ENDPOINT`). |
 | `--trace-file`           |       | Файл трейсов при exporter=file (переопределяет `TRACE_FILE`).                    |
-| `--trace-sampling-ratio` |       | Доля семплирования 0.0–1.0 (переопределяет `TRACE_SAMPLING_RATIO`).              |
-| `--no-mgmt`              |       | *(устаревший)* Используйте `--mgmt-enabled=false`.                               |
+| `--trace-sampling-ratio`    |       | Доля семплирования 0.0–1.0 (переопределяет `TRACE_SAMPLING_RATIO`). |
+| `--request-id-headers`      |       | Заголовки входящего request id через запятую (переопределяет `REQUEST_ID_HEADERS`). |
+| `--request-id-response-header` |    | Каноничный response header (переопределяет `REQUEST_ID_RESPONSE_HEADER`). |
+| `--no-mgmt`                 |       | *(устаревший)* Используйте `--mgmt-enabled=false`.                  |
 | `--no-metrics`           |       | *(устаревший)* Используйте `--metrics-enabled=false`.                            |
 | `--no-logs`              |       | *(устаревший)* Используйте `--logging=false`.                                    |
 | `--help`                 | `-h`  | Показать справку.                                                                |
@@ -401,7 +403,7 @@ logger.Info().Msg("Запрос достиг бизнес-логики") // Бу
 ```bash
 make docker-dev
 # или
-docker compose up --build
+docker compose -f docker-compose.dev.yaml up --build
 ```
 
 **Рабочий процесс:**
@@ -440,9 +442,13 @@ make compose-smoke
 
 Compose-файлы:
 
-- `docker-compose.yaml` — dev-окружение.
+- `docker-compose.dev.yaml` — dev-окружение.
 - `docker-compose.observability.yaml` — полный observability-стек (Prometheus, Loki, Tempo, OTel Collector, Grafana).
 - Конфиги сервисов лежат в `deploy/` (`prometheus.yaml`, `otel.yaml`, `promtail.yaml`, `tempo.yaml`, `grafana/`).
+
+> Рекомендуемое место для локальных overrides — корневой `.env` (например `cp .env.example .env`).
+> `make docker-dev` и `make compose-*` автоматически передадут его в Docker Compose. Для обратной совместимости также
+> поддерживается `deploy/.env`.
 
 ### Сборка для продакшена
 
