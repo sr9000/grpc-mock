@@ -107,31 +107,31 @@
 
 #### Флаги:
 
-| Флаг                     | Сокр. | Описание                                                                         |
-|:-------------------------|:------|:---------------------------------------------------------------------------------|
-| `--host`                 |       | Хост интерфейса (переопределяет переменную `HOST`).                              |
-| `--port`                 | `-p`  | Порт (переопределяет переменную `PORT`).                                         |
-| `--mgmt-port`            | `-m`  | Порт сервера управления (переопределяет `MGMT_PORT`).                            |
-| `--metrics-port`         |       | Порт сервера метрик (переопределяет `METRICS_PORT`).                             |
-| `--mgmt-enabled`         |       | Включить сервер управления (переопределяет `MGMT_ENABLED`).                      |
-| `--metrics-enabled`      |       | Включить сервер метрик (переопределяет `METRICS_ENABLED`).                       |
-| `--logging`              |       | Включить логирование gRPC запросов (переопределяет `GRPC_LOGGING`).              |
-| `--reflection`           | `-r`  | Включить gRPC рефлексию (переопределяет `GRPC_REFLECTION`).                      |
-| `--log-format`           |       | Формат логов: json/console (переопределяет `LOG_FORMAT`).                        |
-| `--log-output`           |       | Куда писать логи: stdout/file (переопределяет `LOG_OUTPUT`).                     |
-| `--log-file`             |       | Путь до лог-файла при output=file (переопределяет `LOG_FILE`).                   |
-| `--log-level`            |       | Уровень логирования: debug..error (переопределяет `LOG_LEVEL`).                  |
-| `--trace-enabled`        |       | Включить OpenTelemetry tracing (переопределяет `TRACE_ENABLED`).                 |
-| `--trace-exporter`       |       | Экспортер трейсов: none/file/otlp-http (переопределяет `TRACE_EXPORTER`).        |
-| `--trace-endpoint`       |       | OTLP HTTP endpoint, напр. otel-collector:4318 (переопределяет `TRACE_ENDPOINT`). |
-| `--trace-file`           |       | Файл трейсов при exporter=file (переопределяет `TRACE_FILE`).                    |
-| `--trace-sampling-ratio`    |       | Доля семплирования 0.0–1.0 (переопределяет `TRACE_SAMPLING_RATIO`). |
-| `--request-id-headers`      |       | Заголовки входящего request id через запятую (переопределяет `REQUEST_ID_HEADERS`). |
-| `--request-id-response-header` |    | Каноничный response header (переопределяет `REQUEST_ID_RESPONSE_HEADER`). |
-| `--no-mgmt`                 |       | *(устаревший)* Используйте `--mgmt-enabled=false`.                  |
-| `--no-metrics`           |       | *(устаревший)* Используйте `--metrics-enabled=false`.                            |
-| `--no-logs`              |       | *(устаревший)* Используйте `--logging=false`.                                    |
-| `--help`                 | `-h`  | Показать справку.                                                                |
+| Флаг                           | Сокр. | Описание                                                                            |
+|:-------------------------------|:------|:------------------------------------------------------------------------------------|
+| `--host`                       |       | Хост интерфейса (переопределяет переменную `HOST`).                                 |
+| `--port`                       | `-p`  | Порт (переопределяет переменную `PORT`).                                            |
+| `--mgmt-port`                  | `-m`  | Порт сервера управления (переопределяет `MGMT_PORT`).                               |
+| `--metrics-port`               |       | Порт сервера метрик (переопределяет `METRICS_PORT`).                                |
+| `--mgmt-enabled`               |       | Включить сервер управления (переопределяет `MGMT_ENABLED`).                         |
+| `--metrics-enabled`            |       | Включить сервер метрик (переопределяет `METRICS_ENABLED`).                          |
+| `--logging`                    |       | Включить логирование gRPC запросов (переопределяет `GRPC_LOGGING`).                 |
+| `--reflection`                 | `-r`  | Включить gRPC рефлексию (переопределяет `GRPC_REFLECTION`).                         |
+| `--log-format`                 |       | Формат логов: json/console (переопределяет `LOG_FORMAT`).                           |
+| `--log-output`                 |       | Куда писать логи: stdout/file (переопределяет `LOG_OUTPUT`).                        |
+| `--log-file`                   |       | Путь до лог-файла при output=file (переопределяет `LOG_FILE`).                      |
+| `--log-level`                  |       | Уровень логирования: debug..error (переопределяет `LOG_LEVEL`).                     |
+| `--trace-enabled`              |       | Включить OpenTelemetry tracing (переопределяет `TRACE_ENABLED`).                    |
+| `--trace-exporter`             |       | Экспортер трейсов: none/file/otlp-http (переопределяет `TRACE_EXPORTER`).           |
+| `--trace-endpoint`             |       | OTLP HTTP endpoint, напр. otel-collector:4318 (переопределяет `TRACE_ENDPOINT`).    |
+| `--trace-file`                 |       | Файл трейсов при exporter=file (переопределяет `TRACE_FILE`).                       |
+| `--trace-sampling-ratio`       |       | Доля семплирования 0.0–1.0 (переопределяет `TRACE_SAMPLING_RATIO`).                 |
+| `--request-id-headers`         |       | Заголовки входящего request id через запятую (переопределяет `REQUEST_ID_HEADERS`). |
+| `--request-id-response-header` |       | Каноничный response header (переопределяет `REQUEST_ID_RESPONSE_HEADER`).           |
+| `--no-mgmt`                    |       | *(устаревший)* Используйте `--mgmt-enabled=false`.                                  |
+| `--no-metrics`                 |       | *(устаревший)* Используйте `--metrics-enabled=false`.                               |
+| `--no-logs`                    |       | *(устаревший)* Используйте `--logging=false`.                                       |
+| `--help`                       | `-h`  | Показать справку.                                                                   |
 
 #### Переменные окружения:
 
