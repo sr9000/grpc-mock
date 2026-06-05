@@ -101,10 +101,22 @@ if ! curl -fsSG --data-urlencode 'query=up{job="grpc-mock"}' "http://127.0.0.1:9
   exit 1
 fi
 
-if ! curl -fsSG --data-urlencode 'query={job="grpc-mock"}' "http://127.0.0.1:3100/loki/api/v1/query" | grep -q '"result"'; then
-  echo "Loki query did not return a valid result payload" >&2
+# Query Loki for the exact smoke request id to prove the correlated request reached log collection
+echo "  Querying Loki for request_id=${SMOKE_REQ_ID} ..."
+LOKI_REQ_FOUND=false
+for _i in $(seq 1 15); do
+  sleep 2
+  LOKI_RESP="$(curl -fsSG --data-urlencode "query={job=\"grpc-mock\"} |= \"${SMOKE_REQ_ID}\"" "http://127.0.0.1:3100/loki/api/v1/query" 2>/dev/null || echo "")"
+  if echo "$LOKI_RESP" | grep -q "${SMOKE_REQ_ID}"; then
+    LOKI_REQ_FOUND=true
+    break
+  fi
+done
+if [[ "$LOKI_REQ_FOUND" != "true" ]]; then
+  echo "ERROR: Loki did not return log lines containing request_id=${SMOKE_REQ_ID}" >&2
   exit 1
 fi
+echo "  Found smoke request_id in Loki"
 
 for datasource in "gRPC Mock Metrics" "gRPC Mock Traces" "gRPC Mock Logs"; do
   encoded_name="${datasource// /%20}"
