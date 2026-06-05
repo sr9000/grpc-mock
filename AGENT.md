@@ -28,54 +28,30 @@ Management API, Recorder JSON, Metrics, Make target, Stub Updater, and Docs layo
 4. **Safe-enough stub patching behavior**
     - updater preserves existing method bodies on signature drift
 
-## Gaps versus `openapi-mock`
+## Parity status versus `openapi-mock` (now largely reached)
 
-1. **Management API is smaller and older**
-    - current shape centers on `/logs` + `DELETE /logs`
-    - lacks request-id filtering, reset semantics, richer docs discovery
-2. **Observability stack is lighter**
-    - Prometheus + Grafana only
-    - no repo-owned smoke validation for the full stack
-3. **Stub updater is under-tested**
-    - large monolithic `cmd/upd-stubs/main.go`
-    - no updater-focused tests were found
-    - no `--dry-run` / `--verbose` style UX
-4. **Generated logging style is older**
-    - logging is injected directly into generated methods instead of being centered in middleware/interceptors +
-      contextual logger patterns
+Most historical gaps are closed. Verified in code:
 
-## Recommendations for unification work
+1. **Management API is at parity** — `GET /logs/{request_id}`, `POST /reset`, full `context-values` surface, and docs
+   discovery (`/docs`, `/docs/{service}`) are implemented in `pkg/mgmt/server.go`.
+2. **Observability stack is full** — Prometheus + Loki + Tempo + OTel Collector + Grafana via
+   `docker-compose.observability.yaml`, with repo-owned `make compose-smoke`.
+3. **Stub updater is modular and tested** — `cmd/upd-stubs/` is split into files and covered by
+   `upd_stubs_test.go`; `--dry-run`, `--verbose`, and `--prune` flags exist (see `UPD_STUBS.md`).
+4. **Structured logging** — access logs flow through interceptors + a contextual logger (`pkg/observability`).
+5. **`/clear` routes removed**; `scripts/__pycache__/` is already gitignored.
 
-### Priority 1
+## Remaining friction (open)
 
-- Add a `compose-smoke` workflow comparable to `openapi-mock`.
-- Move toward `DELETE /logs`-style management semantics (`/clear` routes have been removed).
-- Align README section order and terminology with `openapi-mock`.
+These are the genuinely-open items; the full cross-repo list lives in `../CONTRACTS.md` §8.
 
-### Priority 2
-
-- Refactor `cmd/upd-stubs` into smaller files/packages.
-- Add tests for:
-    - signature migration,
-    - import alias repair,
-    - method append behavior,
-    - wire generation.
-- Add updater flags such as `--dry-run` and `--verbose`.
-
-### Priority 3
-
-- Decide how far to align observability with `openapi-mock`.
-- Likely good target:
-    - richer structured logs,
-    - stronger stack validation,
-    - optional traces only if they add clear value for gRPC usage.
-
-## Extra findings
-
-- Untracked cache directory observed: `scripts/__pycache__/`.
-    - Likely worth adding to `.gitignore`.
-- Metrics docs should stay aligned with code labels (`grpc_requests_total` currently records both `method` and `status`
-  in code).
+1. **`make run` is broken** — it runs `go run ./cmd/grpc-mock` without the `run` subcommand, so it prints help
+   instead of starting the server. Should be `go run ./cmd/grpc-mock run` (matches `openapi-mock`).
+2. **`.env.example` uses `GRPC_PORT`**, but the server reads `PORT`; `GRPC_PORT` only maps the host port in the
+   observability compose. Add `PORT`/`HOST` (and a comment) to avoid confusion.
+3. **No `.env` auto-wiring in the Makefile** — `openapi-mock`'s `compose-*`/`docker-dev` targets pass `--env-file`;
+   `grpc-mock` does not.
+4. **README flag table** omits `--request-id-headers` / `--request-id-response-header`, though both flags exist.
 
 ## Suggested role in the unified direction
 

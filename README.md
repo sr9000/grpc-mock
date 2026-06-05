@@ -57,7 +57,8 @@
 
 ## ✨ Ключевые возможности
 
-* **Автоматическое управление пакетами**: Python-скрипт (`scripts/update_go_packages.py`) сканирует директорию `api-protos/`
+* **Автоматическое управление пакетами**: Python-скрипт (`scripts/update_go_packages.py`) сканирует директорию
+  `api-protos/`
   и автоматически внедряет или обновляет опцию `go_package` во всех файлах в соответствии со структурой проекта. Также
   рекурсивно исправляются локальные пути импорта.
 * **Умная генерация заглушек**: Утилита `upd-stubs` генерирует бойлерплейт для реализации сервера. Она использует
@@ -106,29 +107,29 @@
 
 #### Флаги:
 
-| Флаг                        | Сокр. | Описание                                                            |
-|:----------------------------|:------|:--------------------------------------------------------------------|
-| `--host`                    |       | Хост интерфейса (переопределяет переменную `HOST`).                 |
-| `--port`                    | `-p`  | Порт (переопределяет переменную `PORT`).                            |
-| `--mgmt-port`               | `-m`  | Порт сервера управления (переопределяет `MGMT_PORT`).               |
-| `--metrics-port`            |       | Порт сервера метрик (переопределяет `METRICS_PORT`).                |
-| `--mgmt-enabled`            |       | Включить сервер управления (переопределяет `MGMT_ENABLED`).         |
-| `--metrics-enabled`         |       | Включить сервер метрик (переопределяет `METRICS_ENABLED`).          |
-| `--logging`                 |       | Включить логирование gRPC запросов (переопределяет `GRPC_LOGGING`). |
-| `--reflection`              | `-r`  | Включить gRPC рефлексию (переопределяет `GRPC_REFLECTION`).         |
-| `--log-format`              |       | Формат логов: json/console (переопределяет `LOG_FORMAT`).           |
-| `--log-output`              |       | Куда писать логи: stdout/file (переопределяет `LOG_OUTPUT`).        |
-| `--log-file`                |       | Путь до лог-файла при output=file (переопределяет `LOG_FILE`).      |
-| `--log-level`               |       | Уровень логирования: debug..error (переопределяет `LOG_LEVEL`).     |
-| `--trace-enabled`           |       | Включить OpenTelemetry tracing (переопределяет `TRACE_ENABLED`).    |
-| `--trace-exporter`          |       | Экспортер трейсов: none/file/otlp-http (переопределяет `TRACE_EXPORTER`). |
-| `--trace-endpoint`          |       | OTLP HTTP endpoint, напр. otel-collector:4318 (переопределяет `TRACE_ENDPOINT`). |
-| `--trace-file`              |       | Файл трейсов при exporter=file (переопределяет `TRACE_FILE`).       |
-| `--trace-sampling-ratio`    |       | Доля семплирования 0.0–1.0 (переопределяет `TRACE_SAMPLING_RATIO`). |
-| `--no-mgmt`                 |       | *(устаревший)* Используйте `--mgmt-enabled=false`.                  |
-| `--no-metrics`              |       | *(устаревший)* Используйте `--metrics-enabled=false`.               |
-| `--no-logs`                 |       | *(устаревший)* Используйте `--logging=false`.                       |
-| `--help`                    | `-h`  | Показать справку.                                                   |
+| Флаг                     | Сокр. | Описание                                                                         |
+|:-------------------------|:------|:---------------------------------------------------------------------------------|
+| `--host`                 |       | Хост интерфейса (переопределяет переменную `HOST`).                              |
+| `--port`                 | `-p`  | Порт (переопределяет переменную `PORT`).                                         |
+| `--mgmt-port`            | `-m`  | Порт сервера управления (переопределяет `MGMT_PORT`).                            |
+| `--metrics-port`         |       | Порт сервера метрик (переопределяет `METRICS_PORT`).                             |
+| `--mgmt-enabled`         |       | Включить сервер управления (переопределяет `MGMT_ENABLED`).                      |
+| `--metrics-enabled`      |       | Включить сервер метрик (переопределяет `METRICS_ENABLED`).                       |
+| `--logging`              |       | Включить логирование gRPC запросов (переопределяет `GRPC_LOGGING`).              |
+| `--reflection`           | `-r`  | Включить gRPC рефлексию (переопределяет `GRPC_REFLECTION`).                      |
+| `--log-format`           |       | Формат логов: json/console (переопределяет `LOG_FORMAT`).                        |
+| `--log-output`           |       | Куда писать логи: stdout/file (переопределяет `LOG_OUTPUT`).                     |
+| `--log-file`             |       | Путь до лог-файла при output=file (переопределяет `LOG_FILE`).                   |
+| `--log-level`            |       | Уровень логирования: debug..error (переопределяет `LOG_LEVEL`).                  |
+| `--trace-enabled`        |       | Включить OpenTelemetry tracing (переопределяет `TRACE_ENABLED`).                 |
+| `--trace-exporter`       |       | Экспортер трейсов: none/file/otlp-http (переопределяет `TRACE_EXPORTER`).        |
+| `--trace-endpoint`       |       | OTLP HTTP endpoint, напр. otel-collector:4318 (переопределяет `TRACE_ENDPOINT`). |
+| `--trace-file`           |       | Файл трейсов при exporter=file (переопределяет `TRACE_FILE`).                    |
+| `--trace-sampling-ratio` |       | Доля семплирования 0.0–1.0 (переопределяет `TRACE_SAMPLING_RATIO`).              |
+| `--no-mgmt`              |       | *(устаревший)* Используйте `--mgmt-enabled=false`.                               |
+| `--no-metrics`           |       | *(устаревший)* Используйте `--metrics-enabled=false`.                            |
+| `--no-logs`              |       | *(устаревший)* Используйте `--logging=false`.                                    |
+| `--help`                 | `-h`  | Показать справку.                                                                |
 
 #### Переменные окружения:
 
@@ -179,30 +180,29 @@
 
 ### Core-эндпоинты (обязательные, идентичны openapi-mock):
 
-| Метод    | Путь                          | Описание                                           |
-|:---------|:------------------------------|:---------------------------------------------------|
-| `GET`    | `/logs`                       | Получить все записанные gRPC-вызовы в формате JSON |
-| `GET`    | `/logs/{request_id}`          | Получить записи для конкретного request id         |
-| `DELETE` | `/logs`                       | Очистить все записи                                |
-| `POST`   | `/reset`                      | Soft reset (очистка записей + сброс состояния)     |
-| `GET`    | `/docs`                       | Список зарегистрированных gRPC-сервисов            |
-| `GET`    | `/docs/{service}`             | Методы конкретного gRPC-сервиса                    |
-| `GET`    | `/doc`                        | Интерактивная страница Swagger UI                  |
-| `GET`    | `/openapi.json`               | Спецификация OpenAPI в формате JSON                |
+| Метод    | Путь                 | Описание                                           |
+|:---------|:---------------------|:---------------------------------------------------|
+| `GET`    | `/logs`              | Получить все записанные gRPC-вызовы в формате JSON |
+| `GET`    | `/logs/{request_id}` | Получить записи для конкретного request id         |
+| `DELETE` | `/logs`              | Очистить все записи                                |
+| `POST`   | `/reset`             | Soft reset (очистка записей + сброс состояния)     |
+| `GET`    | `/docs`              | Список зарегистрированных gRPC-сервисов            |
+| `GET`    | `/docs/{service}`    | Методы конкретного gRPC-сервиса                    |
+| `GET`    | `/doc`               | Интерактивная страница Swagger UI                  |
+| `GET`    | `/openapi.json`      | Спецификация OpenAPI в формате JSON                |
 
 ### Context-values эндпоинты (pre-seeding контекста запросов):
 
-| Метод    | Путь                                    | Описание                                              |
-|:---------|:----------------------------------------|:------------------------------------------------------|
-| `GET`    | `/context-values`                       | Получить все контекстные значения                     |
-| `PUT`    | `/context-values`                       | Заменить все контекстные значения                     |
-| `PATCH`  | `/context-values`                       | Объединить с существующими контекстными значениями    |
-| `DELETE` | `/context-values`                       | Очистить все контекстные значения                     |
-| `GET`    | `/context-values/{request_id}`          | Получить значения для конкретного request id          |
-| `PUT`    | `/context-values/{request_id}`          | Заменить значения для конкретного request id          |
-| `PATCH`  | `/context-values/{request_id}`          | Объединить значения для конкретного request id        |
-| `DELETE` | `/context-values/{request_id}`          | Удалить значения для конкретного request id           |
-
+| Метод    | Путь                           | Описание                                           |
+|:---------|:-------------------------------|:---------------------------------------------------|
+| `GET`    | `/context-values`              | Получить все контекстные значения                  |
+| `PUT`    | `/context-values`              | Заменить все контекстные значения                  |
+| `PATCH`  | `/context-values`              | Объединить с существующими контекстными значениями |
+| `DELETE` | `/context-values`              | Очистить все контекстные значения                  |
+| `GET`    | `/context-values/{request_id}` | Получить значения для конкретного request id       |
+| `PUT`    | `/context-values/{request_id}` | Заменить значения для конкретного request id       |
+| `PATCH`  | `/context-values/{request_id}` | Объединить значения для конкретного request id     |
+| `DELETE` | `/context-values/{request_id}` | Удалить значения для конкретного request id        |
 
 ### Формат записи вызова:
 
@@ -254,8 +254,8 @@ open http://localhost:9000/doc
 
 ## 📊 Сервер метрик (Prometheus)
 
-Для мониторинга и observability gRPC-мок включает встроенный HTTP-сервер метрик на порту 9090 (по умолчанию).
-Метрики экспортируются в формате Prometheus и доступны по эндпоинту `/metrics`.
+Для мониторинга и observability gRPC-мок включает встроенный HTTP-сервер метрик на порту 9100 (по умолчанию,
+переопределяется `METRICS_PORT`). Метрики экспортируются в формате Prometheus и доступны по эндпоинту `/metrics`.
 
 ### Эндпоинт:
 
@@ -265,13 +265,13 @@ open http://localhost:9000/doc
 
 ### Метрики gRPC:
 
-| Метрика                         | Тип       | Labels             | Описание                                    |
-|:--------------------------------|:----------|:-------------------|:--------------------------------------------|
-| `grpc_requests_total`           | Counter   | `method`, `status` | Общее количество gRPC запросов (для RPS)    |
-| `grpc_request_duration_seconds` | Histogram | `method`, `status` | Гистограмма латентности запросов            |
-| `grpc_errors_total`             | Counter   | `method`, `kind`   | Количество ошибок по типу (error rate)      |
-| `grpc_panics_total`             | Counter   | `method`, `kind`   | Количество паник по типу (panic rate)       |
-| `grpc_requests_in_flight`       | Gauge     | `method`           | Количество обрабатываемых запросов          |
+| Метрика                         | Тип       | Labels             | Описание                                 |
+|:--------------------------------|:----------|:-------------------|:-----------------------------------------|
+| `grpc_requests_total`           | Counter   | `method`, `status` | Общее количество gRPC запросов (для RPS) |
+| `grpc_request_duration_seconds` | Histogram | `method`, `status` | Гистограмма латентности запросов         |
+| `grpc_errors_total`             | Counter   | `method`, `kind`   | Количество ошибок по типу (error rate)   |
+| `grpc_panics_total`             | Counter   | `method`, `kind`   | Количество паник по типу (panic rate)    |
+| `grpc_requests_in_flight`       | Gauge     | `method`           | Количество обрабатываемых запросов       |
 
 ### Метрики ресурсов:
 
@@ -287,13 +287,13 @@ open http://localhost:9000/doc
 
 ```bash
 # Получить все метрики
-curl http://localhost:9090/metrics
+curl http://localhost:9100/metrics
 
 # Получить только gRPC метрики
-curl -s http://localhost:9090/metrics | grep "^grpc_"
+curl -s http://localhost:9100/metrics | grep "^grpc_"
 
 # Получить метрики памяти
-curl -s http://localhost:9090/metrics | grep "process_memory"
+curl -s http://localhost:9100/metrics | grep "process_resident_memory"
 ```
 
 ### Интеграция с Prometheus:
@@ -304,7 +304,7 @@ curl -s http://localhost:9090/metrics | grep "process_memory"
 scrape_configs:
   - job_name: 'grpc-mock'
     static_configs:
-      - targets: [ 'localhost:9090' ]
+      - targets: [ 'localhost:9100' ]
     scrape_interval: 15s
 ```
 
@@ -334,11 +334,11 @@ grpc_memory_bytes{type="heap_alloc"}
 
 Поддерживаемые экспортеры:
 
-| Экспортер   | Описание                                          | Переменные                        |
-|:------------|:--------------------------------------------------|:----------------------------------|
-| `none`      | Трассировка отключена (по умолчанию)              | —                                 |
-| `file`      | Запись спанов в JSON-файл (удобно для отладки)    | `TRACE_FILE`                      |
-| `otlp-http` | Отправка спанов через OTLP HTTP в Collector/Tempo | `TRACE_ENDPOINT`, `TRACE_FILE`    |
+| Экспортер   | Описание                                          | Переменные                     |
+|:------------|:--------------------------------------------------|:-------------------------------|
+| `none`      | Трассировка отключена (по умолчанию)              | —                              |
+| `file`      | Запись спанов в JSON-файл (удобно для отладки)    | `TRACE_FILE`                   |
+| `otlp-http` | Отправка спанов через OTLP HTTP в Collector/Tempo | `TRACE_ENDPOINT`, `TRACE_FILE` |
 
 ```bash
 # Пример запуска с файловым экспортером
@@ -439,6 +439,7 @@ make compose-smoke
 ```
 
 Compose-файлы:
+
 - `docker-compose.yaml` — dev-окружение.
 - `docker-compose.observability.yaml` — полный observability-стек (Prometheus, Loki, Tempo, OTel Collector, Grafana).
 - Конфиги сервисов лежат в `deploy/` (`prometheus.yaml`, `otel.yaml`, `promtail.yaml`, `tempo.yaml`, `grafana/`).
