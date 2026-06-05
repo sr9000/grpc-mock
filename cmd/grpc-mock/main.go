@@ -96,6 +96,10 @@ func main() {
 	runCmd.Flags().String("trace-file", "", "Trace file path when exporter=file (overrides TRACE_FILE env var)")
 	runCmd.Flags().Float64("trace-sampling-ratio", 0, "Trace sampling ratio 0.0–1.0 (overrides TRACE_SAMPLING_RATIO env var)")
 
+	// Request-ID flags
+	runCmd.Flags().String("request-id-headers", "", "Comma-separated list of request-id header names (overrides REQUEST_ID_HEADERS env var)")
+	runCmd.Flags().String("request-id-response-header", "", "Response header name for request-id echo (overrides REQUEST_ID_RESPONSE_HEADER env var)")
+
 	// Deprecated flags (kept for backward compatibility)
 	runCmd.Flags().Bool("no-mgmt", false, "[deprecated] Use --mgmt-enabled=false instead")
 	runCmd.Flags().Bool("no-metrics", false, "[deprecated] Use --metrics-enabled=false instead")
@@ -185,6 +189,14 @@ func runServer(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("trace-sampling-ratio") {
 		v, _ := cmd.Flags().GetFloat64("trace-sampling-ratio")
 		cfg.TraceSamplingRatio = v
+	}
+
+	// Request-ID flag overrides
+	if v, _ := cmd.Flags().GetString("request-id-headers"); v != "" {
+		cfg.RequestIDHeaders = v
+	}
+	if v, _ := cmd.Flags().GetString("request-id-response-header"); v != "" {
+		cfg.RequestIDResponseHeader = v
 	}
 
 	// Deprecated flag handling (lower precedence than explicit boolean flags)
