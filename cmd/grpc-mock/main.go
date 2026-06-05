@@ -556,7 +556,7 @@ func finishRecord(_ context.Context, _ *recorder.Recorder, m *metrics.Metrics, e
 		}
 		if m != nil {
 			m.RecordRequest(fullMethod, record.DurationMs, "error")
-			m.RecordError(fullMethod, record.Error)
+			m.RecordError(fullMethod, err)
 		}
 	} else {
 		span.SetAttributes(attribute.String("rpc.status_code", "ok"))
