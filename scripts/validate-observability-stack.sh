@@ -118,6 +118,37 @@ if [[ "$LOKI_REQ_FOUND" != "true" ]]; then
 fi
 echo "  Found smoke request_id in Loki"
 
+# Verify trace export: try exact trace id lookup in Tempo first, fall back to collector metrics
+echo "  Querying Tempo for trace_id=${SMOKE_TRACE_ID} ..."
+TRACE_FOUND=false
+for _i in $(seq 1 15); do
+  sleep 2
+  TEMPO_RESP="$(curl -fsS "http://127.0.0.1:3200/api/traces/${SMOKE_TRACE_ID}" 2>/dev/null || echo "")"
+  if echo "$TEMPO_RESP" | grep -q "${SMOKE_TRACE_ID}"; then
+    TRACE_FOUND=true
+    break
+  fi
+done
+if [[ "$TRACE_FOUND" == "true" ]]; then
+  echo "  Found smoke trace_id in Tempo"
+else
+  # Fallback: verify the OTel collector received spans
+  echo "  Exact trace lookup not available; verifying collector accepted spans ..."
+  COLLECTOR_METRICS="$(curl -fsS "http://127.0.0.1:13133/metrics" 2>/dev/null || echo "")"
+  if echo "$COLLECTOR_METRICS" | grep -q 'otelcol_receiver_accepted_spans'; then
+    ACCEPTED=$(echo "$COLLECTOR_METRICS" | grep 'otelcol_receiver_accepted_spans' | grep -v '#' | awk '{sum+=$2} END {print sum+0}')
+    if [[ "$ACCEPTED" -gt 0 ]]; then
+      echo "  Collector accepted ${ACCEPTED} spans (trace_id=${SMOKE_TRACE_ID} not directly confirmed)"
+    else
+      echo "ERROR: Collector accepted 0 spans (trace_id=${SMOKE_TRACE_ID})" >&2
+      exit 1
+    fi
+  else
+    echo "ERROR: Could not verify trace export (trace_id=${SMOKE_TRACE_ID})" >&2
+    exit 1
+  fi
+fi
+
 for datasource in "gRPC Mock Metrics" "gRPC Mock Traces" "gRPC Mock Logs"; do
   encoded_name="${datasource// /%20}"
   if ! wait_for_grafana_api_match "Grafana datasource $datasource" "http://127.0.0.1:3000/api/datasources/name/$encoded_name" "\"name\":\"$datasource\""; then
