@@ -359,6 +359,7 @@ func recordingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 		startTime := time.Now()
 
 		ctx, reqID, span, reqLogger := prepareContext(ctx, info.FullMethod, allowedHeaders, requestIDResponseHeader, contextValues, tracer, baseLogger)
+		defer span.End()
 
 		if m != nil {
 			m.InFlightInc(info.FullMethod)
@@ -421,6 +422,7 @@ func streamingInterceptor(rec *recorder.Recorder, m *metrics.Metrics, enableLogg
 		startTime := time.Now()
 
 		ctx, reqID, span, reqLogger := prepareContext(ss.Context(), info.FullMethod, allowedHeaders, requestIDResponseHeader, contextValues, tracer, baseLogger)
+		defer span.End()
 
 		// Wrap the stream so the context is enriched.
 		wrapped := &contextStream{ServerStream: ss, ctx: ctx}

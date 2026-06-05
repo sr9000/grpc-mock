@@ -65,6 +65,7 @@ wait_for_http "prometheus" "http://127.0.0.1:9090/-/healthy"
 wait_for_http "loki" "http://127.0.0.1:3100/ready"
 wait_for_http "tempo" "http://127.0.0.1:3200/ready"
 wait_for_http "collector" "http://127.0.0.1:13133/"
+wait_for_http "collector-metrics" "http://127.0.0.1:8888/metrics"
 wait_for_http "grafana" "http://127.0.0.1:3000/api/health"
 
 echo "[4/6] Sending correlated gRPC request"
@@ -134,7 +135,7 @@ if [[ "$TRACE_FOUND" == "true" ]]; then
 else
   # Fallback: verify the OTel collector received spans
   echo "  Exact trace lookup not available; verifying collector accepted spans ..."
-  COLLECTOR_METRICS="$(curl -fsS "http://127.0.0.1:13133/metrics" 2>/dev/null || echo "")"
+  COLLECTOR_METRICS="$(curl -fsS "http://127.0.0.1:8888/metrics" 2>/dev/null || echo "")"
   if echo "$COLLECTOR_METRICS" | grep -q 'otelcol_receiver_accepted_spans'; then
     ACCEPTED=$(echo "$COLLECTOR_METRICS" | grep 'otelcol_receiver_accepted_spans' | grep -v '#' | awk '{sum+=$2} END {print sum+0}')
     if [[ "$ACCEPTED" -gt 0 ]]; then
