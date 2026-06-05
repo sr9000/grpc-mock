@@ -10,7 +10,7 @@ services:
     volumes:
       # Mount the current directory to /app in the container.
       # This enables bi-directional sync:
-      # 1. You edit files on host -> Container sees them -> Air rebuilds.
+      # 1. You edit files on host -> Container sees them.
       # 2. Container generates .pb.go files -> Host sees them -> IDE works.
       - .:/app
       # Mount go module cache to prevent re-downloading dependencies
