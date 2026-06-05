@@ -197,9 +197,10 @@ func (s *Server) handleDeleteLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
 }
 
-// handleReset performs a soft reset (clears records + any state)
+// handleReset performs a soft reset (clears records + context-values + any state)
 func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 	s.recorder.Clear()
+	s.contextValues.Clear()
 	if s.reset != nil {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()

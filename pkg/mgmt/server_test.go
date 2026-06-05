@@ -995,3 +995,54 @@ func TestHandleDocsServiceNoServiceInfo(t *testing.T) {
 		t.Errorf("Expected status 404, got %d", resp.StatusCode)
 	}
 }
+
+func TestHandleResetClearsContextValues(t *testing.T) {
+	rec := recorder.New()
+	store := mm.NewStore()
+	store.Replace("req-1", map[string]any{"key1": "val1"})
+	store.Replace("req-2", map[string]any{"key2": "val2"})
+
+	s := New(rec, "9000", WithContextValues(store))
+	r := s.router()
+
+	// Verify context-values are populated before reset
+	req := httptest.NewRequest(http.MethodGet, "/context-values", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	resp := w.Result()
+	resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var before map[string]map[string]any
+	if err := json.Unmarshal(body, &before); err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+	if len(before) != 2 {
+		t.Fatalf("Expected 2 request IDs before reset, got %d", len(before))
+	}
+
+	// Reset
+	req = httptest.NewRequest(http.MethodPost, "/reset", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	resp = w.Result()
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Verify context-values are cleared after reset
+	req = httptest.NewRequest(http.MethodGet, "/context-values", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	resp = w.Result()
+	resp.Body.Close()
+	body, _ = io.ReadAll(resp.Body)
+	var after map[string]map[string]any
+	if err := json.Unmarshal(body, &after); err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+	if len(after) != 0 {
+		t.Errorf("Expected empty context-values after reset, got %d entries", len(after))
+	}
+}
