@@ -4,7 +4,7 @@ import re
 # Determine paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
-PROTOS_DIR = os.path.join(ROOT_DIR, 'protos')
+PROTOS_DIR = os.path.join(ROOT_DIR, 'api-protos')
 GO_MODULE_PREFIX = "grpc-mock/internal/genproto"
 
 
@@ -60,7 +60,7 @@ def get_go_package(rel_dir):
     parts = [p for p in parts if p]
 
     if not parts:
-        # Root protos folder?
+        # Root api-protos folder?
         return ""
 
     # Determine alias
@@ -153,8 +153,8 @@ def process_file(file_path):
              return match.group(0)
 
         # 3. Check if it is relative to a top-level folder (legacy behavior)
-        # e.g. import "v2/models.proto" inside protos/store/v2/admin.proto
-        # might resolve to protos/store/v2/models.proto if -I protos/store is used.
+        # e.g. import "v2/models.proto" inside api-protos/store/v2/admin.proto
+        # might resolve to api-protos/store/v2/models.proto if -I api-protos/store is used.
 
         # Iterate top-level folders in PROTOS_DIR
         for item in os.listdir(PROTOS_DIR):
@@ -179,7 +179,7 @@ def process_file(file_path):
 
 def main():
     if not os.path.exists(PROTOS_DIR):
-        print(f"Protos directory not found: {PROTOS_DIR}")
+        print(f"api-protos directory not found: {PROTOS_DIR}")
         return
 
     for root, dirs, files in os.walk(PROTOS_DIR):
