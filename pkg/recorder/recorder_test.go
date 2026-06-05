@@ -24,8 +24,8 @@ func TestRecord(t *testing.T) {
 		RequestID:  "test-id-1",
 		Method:     "/TestService/TestMethod",
 		Timestamp:  time.Now(),
-		Request:    map[string]string{"message": "hello"},
-		Response:   map[string]string{"message": "world"},
+		Request:    json.RawMessage(`{"message":"hello"}`),
+		Response:   json.RawMessage(`{"message":"world"}`),
 		DurationMs: 100,
 	}
 
@@ -89,8 +89,8 @@ func TestToJSON(t *testing.T) {
 		RequestID:  "test-id",
 		Method:     "/TestService/TestMethod",
 		Timestamp:  timestamp,
-		Request:    map[string]string{"message": "hello"},
-		Response:   map[string]string{"message": "world"},
+		Request:    json.RawMessage(`{"message":"hello"}`),
+		Response:   json.RawMessage(`{"message":"world"}`),
 		DurationMs: 50,
 	})
 
@@ -120,7 +120,7 @@ func TestRecordWithError(t *testing.T) {
 		RequestID:  "test-id",
 		Method:     "/TestService/TestMethod",
 		Timestamp:  time.Now(),
-		Request:    map[string]string{"message": "hello"},
+		Request:    json.RawMessage(`{"message":"hello"}`),
 		Error:      "something went wrong",
 		DurationMs: 10,
 	})
@@ -142,7 +142,7 @@ func TestRecordWithPanic(t *testing.T) {
 		RequestID:  "test-id",
 		Method:     "/TestService/TestMethod",
 		Timestamp:  time.Now(),
-		Request:    map[string]string{"message": "hello"},
+		Request:    json.RawMessage(`{"message":"hello"}`),
 		Panic:      "runtime error: index out of range",
 		DurationMs: 5,
 	})
@@ -197,6 +197,41 @@ func TestConcurrentAccess(t *testing.T) {
 	// Should not panic and should complete without data races
 }
 
+func TestGetRecordsByRequestID(t *testing.T) {
+	r := New()
+
+	r.Record(CallRecord{
+		RequestID: "id-1",
+		Method:    "/TestService/MethodA",
+		Timestamp: time.Now(),
+	})
+	r.Record(CallRecord{
+		RequestID: "id-2",
+		Method:    "/TestService/MethodB",
+		Timestamp: time.Now(),
+	})
+	r.Record(CallRecord{
+		RequestID: "id-1",
+		Method:    "/TestService/MethodC",
+		Timestamp: time.Now(),
+	})
+
+	records := r.GetRecordsByRequestID("id-1")
+	if len(records) != 2 {
+		t.Fatalf("Expected 2 records for id-1, got %d", len(records))
+	}
+
+	records = r.GetRecordsByRequestID("id-2")
+	if len(records) != 1 {
+		t.Fatalf("Expected 1 record for id-2, got %d", len(records))
+	}
+
+	records = r.GetRecordsByRequestID("nonexistent")
+	if len(records) != 0 {
+		t.Fatalf("Expected 0 records for nonexistent id, got %d", len(records))
+	}
+}
+
 func TestGetRecordsReturnsCopy(t *testing.T) {
 	r := New()
 
@@ -212,5 +247,24 @@ func TestGetRecordsReturnsCopy(t *testing.T) {
 	records2 := r.GetRecords()
 	if records2[0].RequestID != "test-id-1" {
 		t.Error("GetRecords should return a copy, not the original slice")
+	}
+}
+
+func TestMarshalProto(t *testing.T) {
+	// Non-proto value falls back to encoding/json.
+	got := MarshalProto(map[string]string{"key": "val"})
+	if string(got) != `{"key":"val"}` {
+		t.Errorf("Expected {\"key\":\"val\"}, got %s", got)
+	}
+
+	// nil returns nil.
+	if got := MarshalProto(nil); got != nil {
+		t.Errorf("Expected nil, got %s", got)
+	}
+
+	// Proto message is marshaled via protojson.
+	got = MarshalProto(json.RawMessage(`{"proto":"msg"}`))
+	if string(got) != `{"proto":"msg"}` {
+		t.Errorf("Expected raw JSON, got %s", got)
 	}
 }

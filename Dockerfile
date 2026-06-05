@@ -13,12 +13,9 @@ RUN apk add --no-cache bash python3 make git build-base protobuf protobuf-dev
 
 # 2. Install Go Global Tools
 #    - protoc plugins for generation
-#    - wire for dependency injection
-#    - air for hot-reloading (watcher)
+#    - wire is installed via go tool directive (go.mod)
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
-    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest && \
-    go install github.com/google/wire/cmd/wire@latest && \
-    go install github.com/air-verse/air@latest
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 WORKDIR /app
 
@@ -34,7 +31,7 @@ COPY cmd/upd-stubs ./cmd/upd-stubs
 RUN go build -o /usr/local/bin/upd-stubs ./cmd/upd-stubs
 
 # ==============================================================================
-# STAGE 2: Development (Watcher / Hot-Reload)
+# STAGE 2: Development (Build + Run)
 # ==============================================================================
 FROM tools AS dev
 
@@ -82,8 +79,11 @@ USER appuser
 COPY --from=builder /app/bin/grpc-mock .
 
 # Default configuration
+ENV HOST=0.0.0.0
 ENV PORT=50051
-EXPOSE 50051
+ENV MGMT_PORT=9000
+ENV METRICS_PORT=9100
+EXPOSE 50051 9000 9100
 
 ENTRYPOINT ["./grpc-mock"]
 CMD ["run"]

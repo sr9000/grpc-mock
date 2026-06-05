@@ -22,7 +22,7 @@
 │   ├── metrics/         # Сервер метрик Prometheus
 │   ├── mgmt/            # Сервер управления для e2e-тестирования
 │   └── recorder/        # Запись gRPC-вызовов
-├── protos/              # <--- Поместите ваши .proto файлы сюда
+├── api-protos/              # <--- Поместите ваши .proto файлы сюда
 └── scripts/             # Вспомогательные скрипты для исправления пакетов и генерации
 ```
 
@@ -40,8 +40,8 @@
 
 Рабочий процесс максимально упрощен:
 
-1. **Скопируйте ваши `.proto` файлы** в директорию `protos/`. Вы можете сохранить существующую структуру папок (
-   например, `protos/payment/v1/api.proto`).
+1. **Скопируйте ваши `.proto` файлы** в директорию `api-protos/`. Вы можете сохранить существующую структуру папок (
+   например, `api-protos/payment/v1/api.proto`).
 2. **Запустите команду сборки**:
    ```bash
    make all
@@ -57,13 +57,14 @@
 
 ## ✨ Ключевые возможности
 
-* **Автоматическое управление пакетами**: Python-скрипт (`scripts/update_go_packages.py`) сканирует директорию `protos/`
+* **Автоматическое управление пакетами**: Python-скрипт (`scripts/update_go_packages.py`) сканирует директорию
+  `api-protos/`
   и автоматически внедряет или обновляет опцию `go_package` во всех файлах в соответствии со структурой проекта. Также
   рекурсивно исправляются локальные пути импорта.
 * **Умная генерация заглушек**: Утилита `upd-stubs` генерирует бойлерплейт для реализации сервера. Она использует
   парсинг Go AST, чтобы гарантировать, что **существующая логика внутри методов сохранится** при повторной генерации
   моков.
-* **Поддержка скрытых папок**: Директории, начинающиеся с точки (например, `protos/.private`), автоматически
+* **Поддержка скрытых папок**: Директории, начинающиеся с точки (например, `api-protos/.private`), автоматически
   игнорируются при генерации.
 * **Внедрение зависимостей**: Используется [Google Wire](https://github.com/google/wire) для автоматического связывания
   новых сервисов с основным gRPC-сервером.
@@ -106,32 +107,57 @@
 
 #### Флаги:
 
-| Флаг             | Сокр. | Описание                                                                 |
-|:-----------------|:------|:-------------------------------------------------------------------------|
-| `--host`         |       | Хост интерфейса (переопределяет переменную `HOST`).                      |
-| `--port`         | `-p`  | Порт (переопределяет переменную `PORT`).                                 |
-| `--mgmt-port`    | `-m`  | Порт сервера управления (переопределяет `MGMT_PORT`).                    |
-| `--metrics-port` |       | Порт сервера метрик (переопределяет `METRICS_PORT`).                     |
-| `--no-mgmt`      |       | **Отключить** сервер управления (переопределяет `MGMT_ENABLED`).         |
-| `--no-metrics`   |       | **Отключить** сервер метрик (переопределяет `METRICS_ENABLED`).          |
-| `--reflection`   | `-r`  | Включить gRPC рефлексию (переопределяет `GRPC_REFLECTION`).              |
-| `--no-logs`      |       | **Отключить** логирование gRPC запросов (переопределяет `GRPC_LOGGING`). |
-| `--help`         | `-h`  | Показать справку.                                                        |
+| Флаг                           | Сокр. | Описание                                                                            |
+|:-------------------------------|:------|:------------------------------------------------------------------------------------|
+| `--host`                       |       | Хост интерфейса (переопределяет переменную `HOST`).                                 |
+| `--port`                       | `-p`  | Порт (переопределяет переменную `PORT`).                                            |
+| `--mgmt-port`                  | `-m`  | Порт сервера управления (переопределяет `MGMT_PORT`).                               |
+| `--metrics-port`               |       | Порт сервера метрик (переопределяет `METRICS_PORT`).                                |
+| `--mgmt-enabled`               |       | Включить сервер управления (переопределяет `MGMT_ENABLED`).                         |
+| `--metrics-enabled`            |       | Включить сервер метрик (переопределяет `METRICS_ENABLED`).                          |
+| `--logging`                    |       | Включить логирование gRPC запросов (переопределяет `GRPC_LOGGING`).                 |
+| `--reflection`                 | `-r`  | Включить gRPC рефлексию (переопределяет `GRPC_REFLECTION`).                         |
+| `--log-format`                 |       | Формат логов: json/console (переопределяет `LOG_FORMAT`).                           |
+| `--log-output`                 |       | Куда писать логи: stdout/file (переопределяет `LOG_OUTPUT`).                        |
+| `--log-file`                   |       | Путь до лог-файла при output=file (переопределяет `LOG_FILE`).                      |
+| `--log-level`                  |       | Уровень логирования: debug..error (переопределяет `LOG_LEVEL`).                     |
+| `--trace-enabled`              |       | Включить OpenTelemetry tracing (переопределяет `TRACE_ENABLED`).                    |
+| `--trace-exporter`             |       | Экспортер трейсов: none/file/otlp-http (переопределяет `TRACE_EXPORTER`).           |
+| `--trace-endpoint`             |       | OTLP HTTP endpoint, напр. otel-collector:4318 (переопределяет `TRACE_ENDPOINT`).    |
+| `--trace-file`                 |       | Файл трейсов при exporter=file (переопределяет `TRACE_FILE`).                       |
+| `--trace-sampling-ratio`       |       | Доля семплирования 0.0–1.0 (переопределяет `TRACE_SAMPLING_RATIO`).                 |
+| `--request-id-headers`         |       | Заголовки входящего request id через запятую (переопределяет `REQUEST_ID_HEADERS`). |
+| `--request-id-response-header` |       | Каноничный response header (переопределяет `REQUEST_ID_RESPONSE_HEADER`).           |
+| `--no-mgmt`                    |       | *(устаревший)* Используйте `--mgmt-enabled=false`.                                  |
+| `--no-metrics`                 |       | *(устаревший)* Используйте `--metrics-enabled=false`.                               |
+| `--no-logs`                    |       | *(устаревший)* Используйте `--logging=false`.                                       |
+| `--help`                       | `-h`  | Показать справку.                                                                   |
 
 #### Переменные окружения:
 
 Если флаги или аргументы не переданы, сервер использует значения из переменных окружения:
 
-| Переменная        | По умолч. | Описание                                |
-|:------------------|:----------|:----------------------------------------|
-| `HOST`            | 0.0.0.0   | Хост интерфейса для привязки            |
-| `PORT`            | 50051     | Порт для прослушивания                  |
-| `MGMT_PORT`       | 9000      | Порт сервера управления                 |
-| `METRICS_PORT`    | 9100      | Порт сервера метрик Prometheus          |
-| `MGMT_ENABLED`    | true      | Включить сервер управления              |
-| `METRICS_ENABLED` | true      | Включить сервер метрик                  |
-| `GRPC_REFLECTION` | false     | Включить gRPC рефлексию                 |
-| `GRPC_LOGGING`    | true      | Включить логирование запросов/ответов   |
+| Переменная                   | По умолч.        | Описание                                            |
+|:-----------------------------|:-----------------|:----------------------------------------------------|
+| `HOST`                       | 0.0.0.0          | Хост интерфейса для привязки                        |
+| `PORT`                       | 50051            | Порт для прослушивания                              |
+| `MGMT_PORT`                  | 9000             | Порт сервера управления                             |
+| `METRICS_PORT`               | 9100             | Порт сервера метрик Prometheus                      |
+| `MGMT_ENABLED`               | true             | Включить сервер управления                          |
+| `METRICS_ENABLED`            | true             | Включить сервер метрик                              |
+| `GRPC_REFLECTION`            | false            | Включить gRPC рефлексию                             |
+| `GRPC_LOGGING`               | true             | Включить логирование запросов/ответов               |
+| `REQUEST_ID_HEADERS`         | x-request-id,... | Заголовки для входящего request id (через запятую)  |
+| `REQUEST_ID_RESPONSE_HEADER` | x-request-id     | Каноничный response header c request id             |
+| `LOG_FORMAT`                 | json             | Формат логов (`json`/`console`)                     |
+| `LOG_OUTPUT`                 | stdout           | Куда писать логи (`stdout`/`file`)                  |
+| `LOG_FILE`                   | -                | Путь до лог-файла, если `LOG_OUTPUT=file`           |
+| `LOG_LEVEL`                  | info             | Уровень логирования (`debug..error`)                |
+| `TRACE_ENABLED`              | false            | Включить OpenTelemetry tracing                      |
+| `TRACE_EXPORTER`             | none             | Экспортер трейсов (`none`/`file`/`otlp-http`)       |
+| `TRACE_ENDPOINT`             | -                | OTLP HTTP endpoint (например `otel-collector:4318`) |
+| `TRACE_FILE`                 | ./traces.json    | Файл трейсов при `TRACE_EXPORTER=file`              |
+| `TRACE_SAMPLING_RATIO`       | 1.0              | Доля семплирования трейсов                          |
 
 #### Примеры:
 
@@ -154,14 +180,31 @@
 Для поддержки e2e-тестирования gRPC-мок включает встроенный HTTP-сервер управления на порту 9000 (по умолчанию).
 Этот сервер записывает все gRPC-вызовы и предоставляет API для их просмотра и очистки.
 
-### Эндпоинты:
+### Core-эндпоинты (обязательные, идентичны openapi-mock):
 
-| Метод           | Путь            | Описание                                           |
-|:----------------|:----------------|:---------------------------------------------------|
-| `GET`           | `/logs`         | Получить все записанные gRPC-вызовы в формате JSON |
-| `POST`/`DELETE` | `/clear`        | Очистить все записи                                |
-| `GET`           | `/doc`          | Интерактивная страница Swagger UI                  |
-| `GET`           | `/openapi.json` | Спецификация OpenAPI в формате JSON                |
+| Метод    | Путь                 | Описание                                           |
+|:---------|:---------------------|:---------------------------------------------------|
+| `GET`    | `/logs`              | Получить все записанные gRPC-вызовы в формате JSON |
+| `GET`    | `/logs/{request_id}` | Получить записи для конкретного request id         |
+| `DELETE` | `/logs`              | Очистить все записи                                |
+| `POST`   | `/reset`             | Soft reset (очистка записей + сброс состояния)     |
+| `GET`    | `/docs`              | Список зарегистрированных gRPC-сервисов            |
+| `GET`    | `/docs/{service}`    | Методы конкретного gRPC-сервиса                    |
+| `GET`    | `/doc`               | Интерактивная страница Swagger UI                  |
+| `GET`    | `/openapi.json`      | Спецификация OpenAPI в формате JSON                |
+
+### Context-values эндпоинты (pre-seeding контекста запросов):
+
+| Метод    | Путь                           | Описание                                           |
+|:---------|:-------------------------------|:---------------------------------------------------|
+| `GET`    | `/context-values`              | Получить все контекстные значения                  |
+| `PUT`    | `/context-values`              | Заменить все контекстные значения                  |
+| `PATCH`  | `/context-values`              | Объединить с существующими контекстными значениями |
+| `DELETE` | `/context-values`              | Очистить все контекстные значения                  |
+| `GET`    | `/context-values/{request_id}` | Получить значения для конкретного request id       |
+| `PUT`    | `/context-values/{request_id}` | Заменить значения для конкретного request id       |
+| `PATCH`  | `/context-values/{request_id}` | Объединить значения для конкретного request id     |
+| `DELETE` | `/context-values/{request_id}` | Удалить значения для конкретного request id        |
 
 ### Формат записи вызова:
 
@@ -170,8 +213,12 @@
   "request_id": "ABCD1234",
   "method": "/EchoService/Echo",
   "timestamp": "2026-02-10T12:00:00Z",
-  "request": {"message": "Привет"},
-  "response": {"message": "Привет"},
+  "request": {
+    "message": "Привет"
+  },
+  "response": {
+    "message": "Привет"
+  },
   "error": "",
   "panic": "",
   "duration_ms": 5
@@ -181,9 +228,11 @@
 ### Возможности:
 
 * **Запись запросов и ответов**: Полные тела запросов и ответов сохраняются в памяти.
+* **Фильтрация по request_id**: Получение записей для конкретного идентификатора запроса через `GET /logs/{request_id}`.
 * **Отслеживание ошибок**: Если gRPC-метод вернул ошибку, она будет записана в поле `error`.
 * **Отслеживание паник**: Если в обработчике произошла паника, она будет записана в поле `panic`.
 * **Временные метки**: Каждый вызов содержит timestamp и duration_ms.
+* **Soft reset**: `POST /reset` очищает все записи и сбрасывает состояние мок-сервера без остановки процесса.
 * **Swagger UI**: Встроенная интерактивная документация (файлы загружены в бинарник, не требуют сети).
 
 ### Примеры использования:
@@ -192,8 +241,14 @@
 # Получить все записанные вызовы
 curl http://localhost:9000/logs
 
+# Получить записи для конкретного request id
+curl http://localhost:9000/logs/ABCD1234
+
 # Очистить записи
-curl -X POST http://localhost:9000/clear
+curl -X DELETE http://localhost:9000/logs
+
+# Soft reset (очистка записей + сброс состояния)
+curl -X POST http://localhost:9000/reset
 
 # Открыть Swagger UI в браузере
 open http://localhost:9000/doc
@@ -201,8 +256,8 @@ open http://localhost:9000/doc
 
 ## 📊 Сервер метрик (Prometheus)
 
-Для мониторинга и observability gRPC-мок включает встроенный HTTP-сервер метрик на порту 9090 (по умолчанию).
-Метрики экспортируются в формате Prometheus и доступны по эндпоинту `/metrics`.
+Для мониторинга и observability gRPC-мок включает встроенный HTTP-сервер метрик на порту 9100 (по умолчанию,
+переопределяется `METRICS_PORT`). Метрики экспортируются в формате Prometheus и доступны по эндпоинту `/metrics`.
 
 ### Эндпоинт:
 
@@ -212,34 +267,35 @@ open http://localhost:9000/doc
 
 ### Метрики gRPC:
 
-| Метрика                          | Тип       | Labels               | Описание                                    |
-|:---------------------------------|:----------|:---------------------|:--------------------------------------------|
-| `grpc_requests_total`            | Counter   | `method`             | Общее количество gRPC запросов (для RPS)    |
-| `grpc_request_duration_seconds`  | Histogram | `method`             | Гистограмма латентности запросов            |
-| `grpc_errors_total`              | Counter   | `method`, `error`    | Количество ошибок по сообщению (error rate) |
-| `grpc_panics_total`              | Counter   | `method`, `panic`    | Количество паник по сообщению (panic rate)  |
+| Метрика                         | Тип       | Labels             | Описание                                 |
+|:--------------------------------|:----------|:-------------------|:-----------------------------------------|
+| `grpc_requests_total`           | Counter   | `method`, `status` | Общее количество gRPC запросов (для RPS) |
+| `grpc_request_duration_seconds` | Histogram | `method`, `status` | Гистограмма латентности запросов         |
+| `grpc_errors_total`             | Counter   | `method`, `kind`   | Количество ошибок по типу (error rate)   |
+| `grpc_panics_total`             | Counter   | `method`, `kind`   | Количество паник по типу (panic rate)    |
+| `grpc_requests_in_flight`       | Gauge     | `method`           | Количество обрабатываемых запросов       |
 
 ### Метрики ресурсов:
 
 | Метрика                         | Тип     | Labels | Описание                                          |
 |:--------------------------------|:--------|:-------|:--------------------------------------------------|
-| `process_memory_bytes`          | Gauge   | `type` | Использование памяти (alloc, heap, sys, stack)    |
-| `process_goroutines`            | Gauge   | —      | Количество горутин                                |
+| `grpc_memory_bytes`             | Gauge   | `type` | Использование памяти (alloc, heap, sys, stack)    |
+| `grpc_goroutines_total`         | Gauge   | —      | Количество горутин                                |
+| `go_memstats_*`                 | —       | —      | Детальная статистика Go runtime (GC, heap и т.д.) |
 | `process_cpu_seconds_total`     | Counter | —      | Время CPU (user + system)                         |
 | `process_resident_memory_bytes` | Gauge   | —      | Резидентная память процесса                       |
-| `go_memstats_*`                 | —       | —      | Детальная статистика Go runtime (GC, heap и т.д.) |
 
 ### Примеры использования:
 
 ```bash
 # Получить все метрики
-curl http://localhost:9090/metrics
+curl http://localhost:9100/metrics
 
 # Получить только gRPC метрики
-curl -s http://localhost:9090/metrics | grep "^grpc_"
+curl -s http://localhost:9100/metrics | grep "^grpc_"
 
 # Получить метрики памяти
-curl -s http://localhost:9090/metrics | grep "process_memory"
+curl -s http://localhost:9100/metrics | grep "process_resident_memory"
 ```
 
 ### Интеграция с Prometheus:
@@ -250,7 +306,7 @@ curl -s http://localhost:9090/metrics | grep "process_memory"
 scrape_configs:
   - job_name: 'grpc-mock'
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: [ 'localhost:9100' ]
     scrape_interval: 15s
 ```
 
@@ -270,7 +326,46 @@ histogram_quantile(0.99, rate(grpc_request_duration_seconds_bucket[5m]))
 rate(grpc_errors_total[1m])
 
 # Память heap
-process_memory_bytes{type="heap_alloc"}
+grpc_memory_bytes{type="heap_alloc"}
+```
+
+### Трассировка (OpenTelemetry / Tempo)
+
+При включении флага `TRACE_ENABLED=true` (по умолчанию выключено) сервер автоматически извлекает `traceparent` из
+метаданных gRPC-запросов и отправляет спаны в OpenTelemetry Collector.
+
+Поддерживаемые экспортеры:
+
+| Экспортер   | Описание                                          | Переменные                     |
+|:------------|:--------------------------------------------------|:-------------------------------|
+| `none`      | Трассировка отключена (по умолчанию)              | —                              |
+| `file`      | Запись спанов в JSON-файл (удобно для отладки)    | `TRACE_FILE`                   |
+| `otlp-http` | Отправка спанов через OTLP HTTP в Collector/Tempo | `TRACE_ENDPOINT`, `TRACE_FILE` |
+
+```bash
+# Пример запуска с файловым экспортером
+TRACE_ENABLED=true TRACE_EXPORTER=file ./bin/grpc-mock run
+
+# Пример запуска с OTLP HTTP экспортером
+TRACE_ENABLED=true TRACE_EXPORTER=otlp-http TRACE_ENDPOINT=otel-collector:4318 ./bin/grpc-mock run
+
+# Пример запроса с пробросом конкретного trace_id через grpcurl
+grpcurl -plaintext \
+  -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
+  -d '{"message":"traced"}' \
+  localhost:50051 EchoService/Echo
+```
+
+### Структурированное логирование (Loki / ZeroLog)
+
+Все логи gRPC-запросов и внутреннее логирование автоматически связываются с `request_id`, `trace_id` и `method`.
+Формат логов по умолчанию — `json` (управляется переменной `LOG_FORMAT`), что делает их готовыми для парсинга и
+отправки в Loki. В заглушках (stubs) рекомендуется использовать контекстный логгер из `pkg/observability` для
+сохранения привязки к `trace_id`:
+
+```go
+logger := observability.Logger(ctx, zerolog.Nop())
+logger.Info().Msg("Запрос достиг бизнес-логики") // Будет содержать trace_id и method
 ```
 
 ## 🛠 Детали пайплайна генерации
@@ -278,13 +373,13 @@ process_memory_bytes{type="heap_alloc"}
 При запуске команды `make all` выполняются следующие шаги:
 
 1. **`make update-proto-pkg`**:
-    * Проходит по директории `protos/`.
-    * Вычисляет правильный путь импорта Go на основе структуры папок (например, `protos/echo` превращается в
+    * Проходит по директории `api-protos/`.
+    * Вычисляет правильный путь импорта Go на основе структуры папок (например, `api-protos/echo` превращается в
       `grpc-mock/internal/genproto/echo`).
     * Обновляет `go_package` в `.proto` файлах и исправляет относительные импорты.
 2. **`make proto`**:
     * Компилирует `.proto` файлы с помощью `protoc` в директорию `internal/genproto`.
-    * **Примечание**: Папки, начинающиеся с точки (например, `protos/.hidden`), пропускаются.
+    * **Примечание**: Папки, начинающиеся с точки (например, `api-protos/.hidden`), пропускаются.
 3. **`make stub`**:
     * Собирает и запускает кастомную утилиту `upd-stubs`.
     * Сканирует `internal/genproto` на наличие определений сервисов.
@@ -299,7 +394,7 @@ process_memory_bytes{type="heap_alloc"}
 Проект поддерживает работу через Docker, которая избавляет от необходимости устанавливать Go, Protoc или Python на
 локальную машину.
 
-### Режим разработки (Hot Reload)
+### Режим разработки
 
 Используется конфигурация `docker-compose` с этапом `dev`. В этом режиме:
 
@@ -308,18 +403,14 @@ process_memory_bytes{type="heap_alloc"}
 ```bash
 make docker-dev
 # или
-docker compose up --build
+docker compose -f docker-compose.dev.yaml up --build
 ```
 
-**Возможности режима разработки:**
-
-> Теперь вы можете редактировать `.proto` файлы или логику в `internal/stubs`, и сервер автоматически пересоберется и
-> перезапустится за секунды.
+**Рабочий процесс:**
 
 1. Исходный код с хоста пробрасывается в контейнер (volume mapping).
-2. Запускается утилита **Air**, которая отслеживает изменения в `.go` и `.proto` файлах.
-3. При любом изменении автоматически запускается `make all` (генерация protobuf, обновление заглушек, пересборка
-   сервера).
+2. Контейнер собирает и запускает сервер.
+3. Для применения изменений: остановите контейнер (`Ctrl+C`) и перезапустите (`make docker-dev`).
 4. Сгенерированные файлы (например, `.pb.go` или новые заглушки) **появляются на вашей локальной машине**, обеспечивая
    работу автодополнения в IDE.
 
@@ -342,6 +433,22 @@ make compose-logs
 ```bash
 make compose-down
 ```
+
+Для smoke-тестирования:
+
+```bash
+make compose-smoke
+```
+
+Compose-файлы:
+
+- `docker-compose.dev.yaml` — dev-окружение.
+- `docker-compose.observability.yaml` — полный observability-стек (Prometheus, Loki, Tempo, OTel Collector, Grafana).
+- Конфиги сервисов лежат в `deploy/` (`prometheus.yaml`, `otel.yaml`, `promtail.yaml`, `tempo.yaml`, `grafana/`).
+
+> Рекомендуемое место для локальных overrides — корневой `.env` (например `cp .env.example .env`).
+> `make docker-dev` и `make compose-*` автоматически передадут его в Docker Compose. Для обратной совместимости также
+> поддерживается `deploy/.env`.
 
 ### Сборка для продакшена
 
@@ -368,7 +475,6 @@ docker run --rm -p 50051:50051 -p 9000:9000 -p 9100:9100 grpc-mock:latest
 
 * **Stage `tools`**: Базовый образ с предустановленными компиляторами (protoc, python, go) и скомпилированной утилитой
   `upd-stubs`.
-* **Stage `dev`**: Наследуется от `tools`, добавляет конфиг `.air.toml` и запускает watcher. Используется в
-  docker-compose.
+* **Stage `dev`**: Наследуется от `tools`, собирает и запускает сервер. Используется в docker-compose.
 * **Stage `builder`**: Выполняет полную сборку проекта (`make all`) для релиза.
 * **Stage `production`**: Минимальный образ, содержащий только результат работы `builder`.

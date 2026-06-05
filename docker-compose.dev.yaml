@@ -10,19 +10,19 @@ services:
     volumes:
       # Mount the current directory to /app in the container.
       # This enables bi-directional sync:
-      # 1. You edit files on host -> Container sees them -> Air rebuilds.
+      # 1. You edit files on host -> Container sees them.
       # 2. Container generates .pb.go files -> Host sees them -> IDE works.
       - .:/app
       # Mount go module cache to prevent re-downloading dependencies
       - gomod-cache:/go/pkg/mod
     ports:
-      - "50051:50051"
-      - "9000:9000"
-      - "9100:9100"
+      - "${GRPC_PORT:-50051}:50051"
+      - "${MGMT_PORT:-9000}:9000"
+      - "${METRICS_PORT:-9100}:9100"
     environment:
       - HOST=0.0.0.0
-      - GRPC_REFLECTION=true
-      - GRPC_LOGGING=true
+      - GRPC_REFLECTION=${GRPC_REFLECTION:-true}
+      - GRPC_LOGGING=${GRPC_LOGGING:-true}
 
 volumes:
   gomod-cache:

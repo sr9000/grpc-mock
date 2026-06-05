@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROTO_DIR="$ROOT_DIR/protos"
+PROTO_DIR="$ROOT_DIR/api-protos"
 GOOGLEAPIS_DIR="$ROOT_DIR/googleapis"
 OUT_DIR="$ROOT_DIR/internal/genproto"
 PROTOC_BIN="${PROTOC_BIN:-protoc}"

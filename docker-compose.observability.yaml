@@ -1,0 +1,154 @@
+name: grpc-mock-observability
+
+services:
+  grpc-mock:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    user: "0:0"
+    ports:
+      # gRPC server port
+      - "${GRPC_PORT:-50051}:50051"
+      # Metrics port
+      - "${METRICS_PORT:-9100}:9100"
+      # Management API port
+      - "${MGMT_PORT:-9000}:9000"
+    environment:
+      - HOST=0.0.0.0
+      - GRPC_REFLECTION=${GRPC_REFLECTION:-true}
+      - GRPC_LOGGING=${GRPC_LOGGING:-true}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - LOG_OUTPUT=${LOG_OUTPUT:-file}
+      - LOG_FILE=/var/log/grpc-mock/grpc-mock.log
+      - TRACE_ENABLED=${TRACE_ENABLED:-true}
+      - TRACE_EXPORTER=${TRACE_EXPORTER:-otlp-http}
+      - TRACE_ENDPOINT=otel-collector:4318
+      - TRACE_SAMPLING_RATIO=${TRACE_SAMPLING_RATIO:-1.0}
+      - REQUEST_ID_HEADERS=${REQUEST_ID_HEADERS:-x-request-id,x-correlation-id}
+      - REQUEST_ID_RESPONSE_HEADER=${REQUEST_ID_RESPONSE_HEADER:-x-request-id}
+    command: ["run", "--metrics-port", "9100", "--mgmt-port", "9000"]
+    volumes:
+      - app_logs:/var/log/grpc-mock
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9000/openapi.json"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yaml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./deploy/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      grpc-mock:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9090/-/healthy"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.102.1
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./deploy/otel.yaml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      tempo:
+        condition: service_healthy
+    ports:
+      - "4318:4318"
+      - "13133:13133"
+      - "8888:8888"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:13133/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  tempo:
+    image: grafana/tempo:2.4.1
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./deploy/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo_data:/tmp/tempo
+    ports:
+      - "3200:3200"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3200/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  loki:
+    image: grafana/loki:2.9.8
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3100/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    command: ["-config.file=/etc/promtail/config.yaml"]
+    volumes:
+      - ./deploy/promtail.yaml:/etc/promtail/config.yaml:ro
+      - app_logs:/var/log/grpc-mock:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+      grpc-mock:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9080/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  grafana:
+    build:
+      context: ./deploy/grafana
+      dockerfile: Dockerfile
+    environment:
+      # Note: This refers to the internal service port (9090), which doesn't change
+      - PROMETHEUS_URL=http://prometheus:9090
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  prometheus_data:
+  tempo_data:
+  loki_data:
+  app_logs:

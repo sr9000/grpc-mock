@@ -1,7 +1,12 @@
-.PHONY: all build run gen-proto gen-wire clean help
+.PHONY: all build run gen-proto gen-wire clean help validate-observability compose-up compose-logs compose-down compose-smoke
 
 # Default target: show help when `make` is called without arguments
 .DEFAULT_GOAL := help
+
+DEV_COMPOSE_FILE := docker-compose.dev.yaml
+OBSERVABILITY_COMPOSE_FILE := docker-compose.observability.yaml
+COMPOSE_ENV_PATH := $(or $(wildcard .env),$(wildcard deploy/.env))
+COMPOSE_ENV_FILE := $(if $(COMPOSE_ENV_PATH),--env-file $(COMPOSE_ENV_PATH),)
 
 all: proto stub wire build
 
@@ -36,7 +41,7 @@ wire:
 	@echo
 	@echo "===================="
 	@echo "Updating wire..."
-	go run github.com/google/wire/cmd/wire@latest gen ./internal/app
+	go tool wire gen ./internal/app
 
 # Build the server
 build:
@@ -50,7 +55,7 @@ run:
 	@echo
 	@echo "===================="
 	@echo "Running server..."
-	go run ./cmd/grpc-mock
+	go run ./cmd/grpc-mock run
 
 # Docker operations
 docker-build:
@@ -69,26 +74,41 @@ docker-dev:
 	@echo
 	@echo "===================="
 	@echo "Starting development environment..."
-	docker compose up --build
+	docker compose $(COMPOSE_ENV_FILE) -f $(DEV_COMPOSE_FILE) up --build
 
-# Docker Compose (Full Stack with Grafana)
+# Docker Compose (Full Observability Stack)
 compose-up:
 	@echo
 	@echo "===================="
-	@echo "Starting full stack (gRPC Mock + Prometheus + Grafana)..."
-	docker compose -f docker-compose-grafana.yaml up --build -d
+	@echo "Starting observability stack (gRPC Mock + Prometheus + Loki + Tempo + OTel + Grafana)..."
+	docker compose $(COMPOSE_ENV_FILE) -f $(OBSERVABILITY_COMPOSE_FILE) --progress plain build
+	docker compose $(COMPOSE_ENV_FILE) -f $(OBSERVABILITY_COMPOSE_FILE) up -d
 
 compose-logs:
 	@echo
 	@echo "===================="
 	@echo "Following logs..."
-	docker compose -f docker-compose-grafana.yaml logs -f
+	docker compose $(COMPOSE_ENV_FILE) -f $(OBSERVABILITY_COMPOSE_FILE) logs -f
 
 compose-down:
 	@echo
 	@echo "===================="
-	@echo "Stopping full stack..."
-	docker compose -f docker-compose-grafana.yaml down
+	@echo "Stopping observability stack..."
+	docker compose $(COMPOSE_ENV_FILE) -f $(OBSERVABILITY_COMPOSE_FILE) down
+
+# Smoke test: verify the full stack works end-to-end
+compose-smoke:
+	@echo
+	@echo "===================="
+	@echo "Running observability stack smoke test..."
+	./scripts/validate-observability-stack.sh
+
+# Validate the full observability stack (Prometheus + Grafana + metrics + dashboards)
+validate-observability:
+	@echo
+	@echo "===================="
+	@echo "Validating observability stack..."
+	./scripts/validate-observability-stack.sh
 
 # Show help
 help:
@@ -100,7 +120,9 @@ help:
 	@echo "  run          - Run the server"
 	@echo "  docker-build - Build production Docker image"
 	@echo "  docker-run   - Run production Docker container"
-	@echo "  docker-dev   - Start development environment (watch mode)"
-	@echo "  compose-up   - Start full stack (Mock + Monitoring)"
-	@echo "  compose-logs - Follow logs of full stack"
-	@echo "  compose-down - Stop full stack"
+	@echo "  docker-dev   - Start development environment (build + run via docker-compose.dev.yaml)"
+	@echo "  compose-up   - Start observability stack (Mock + Monitoring via docker-compose.observability.yaml)"
+	@echo "  compose-logs - Follow logs of observability stack"
+	@echo "  compose-down - Stop observability stack"
+	@echo "  compose-smoke - Smoke test the observability stack"
+	@echo "  validate-observability - Validate full observability stack (Prometheus + Loki + Tempo + Grafana)"

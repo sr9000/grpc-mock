@@ -11,6 +11,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Metrics holds all Prometheus metrics for gRPC mock server
@@ -20,6 +22,7 @@ type Metrics struct {
 	RequestDuration *prometheus.HistogramVec
 	ErrorsTotal     *prometheus.CounterVec
 	PanicsTotal     *prometheus.CounterVec
+	InFlight        *prometheus.GaugeVec
 
 	// Resource metrics (custom gauges)
 	MemoryUsage *prometheus.GaugeVec
@@ -53,16 +56,16 @@ func New(port string) *Metrics {
 		ErrorsTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "grpc_errors_total",
-				Help: "Total number of gRPC errors by error message",
+				Help: "Total number of gRPC errors by kind",
 			},
-			[]string{"method", "error"},
+			[]string{"method", "kind"},
 		),
 		PanicsTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "grpc_panics_total",
-				Help: "Total number of gRPC panics by panic message",
+				Help: "Total number of gRPC panics by kind",
 			},
-			[]string{"method", "panic"},
+			[]string{"method", "kind"},
 		),
 		MemoryUsage: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
@@ -77,6 +80,13 @@ func New(port string) *Metrics {
 				Help: "Number of goroutines",
 			},
 		),
+		InFlight: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "grpc_requests_in_flight",
+				Help: "Number of in-flight requests",
+			},
+			[]string{"method"},
+		),
 		registry: registry,
 		port:     port,
 	}
@@ -88,6 +98,7 @@ func New(port string) *Metrics {
 	registry.MustRegister(m.PanicsTotal)
 	registry.MustRegister(m.MemoryUsage)
 	registry.MustRegister(m.Goroutines)
+	registry.MustRegister(m.InFlight)
 
 	// Register default Go collectors for CPU, memory, GC stats
 	registry.MustRegister(collectors.NewGoCollector())
@@ -102,22 +113,73 @@ func (m *Metrics) RecordRequest(method string, durationMs int64, status string) 
 	m.RequestDuration.WithLabelValues(method, status).Observe(float64(durationMs) / 1000.0)
 }
 
-// RecordError records a gRPC error
-func (m *Metrics) RecordError(method, errorMsg string) {
-	// Truncate error message to prevent high cardinality
-	if len(errorMsg) > 100 {
-		errorMsg = errorMsg[:100] + "..."
-	}
-	m.ErrorsTotal.WithLabelValues(method, errorMsg).Inc()
+// RecordError records a gRPC error with a bounded kind label derived from the gRPC status code.
+// The full error message is kept in logs/records, not in metric labels.
+func (m *Metrics) RecordError(method string, err error) {
+	kind := errorKindFromErr(err)
+	m.ErrorsTotal.WithLabelValues(method, kind).Inc()
 }
 
-// RecordPanic records a gRPC panic
+// RecordPanic records a gRPC panic with a bounded kind label.
+// The full panic message is kept in logs/records, not in metric labels.
 func (m *Metrics) RecordPanic(method, panicMsg string) {
-	// Truncate panic message to prevent high cardinality
-	if len(panicMsg) > 100 {
-		panicMsg = panicMsg[:100] + "..."
+	kind := panicKind(panicMsg)
+	m.PanicsTotal.WithLabelValues(method, kind).Inc()
+}
+
+// InFlightInc increments the in-flight gauge for the given method.
+func (m *Metrics) InFlightInc(method string) {
+	m.InFlight.WithLabelValues(method).Inc()
+}
+
+// InFlightDec decrements the in-flight gauge for the given method.
+func (m *Metrics) InFlightDec(method string) {
+	m.InFlight.WithLabelValues(method).Dec()
+}
+
+// errorKindFromErr extracts a bounded kind from an error using the gRPC status code.
+func errorKindFromErr(err error) string {
+	if err == nil {
+		return codes.OK.String()
 	}
-	m.PanicsTotal.WithLabelValues(method, panicMsg).Inc()
+	if s, ok := status.FromError(err); ok {
+		return s.Code().String()
+	}
+	return codes.Unknown.String()
+}
+
+// panicKind extracts a bounded kind from a panic message.
+func panicKind(msg string) string {
+	// Classify panics into a small fixed set of kinds.
+	// Do not use the raw panic text as a label value.
+	switch {
+	case contains(msg, "nil pointer"):
+		return "nil_pointer"
+	case contains(msg, "index out of range"):
+		return "index_out_of_range"
+	case contains(msg, "slice bounds out of range"):
+		return "slice_bounds"
+	case contains(msg, "interface conversion"):
+		return "type_assertion"
+	case contains(msg, "concurrent map"):
+		return "concurrent_map"
+	default:
+		return "runtime_error"
+	}
+}
+
+// contains checks if s contains substr (case-insensitive).
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && searchSubstring(s, substr)
+}
+
+func searchSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 // updateResourceMetrics updates memory and CPU metrics

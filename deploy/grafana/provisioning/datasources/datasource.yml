@@ -11,3 +11,19 @@ datasources:
     jsonData:
       httpMethod: GET
       timeInterval: "5s"
+
+  - name: gRPC Mock Traces
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      httpMethod: GET
+
+  - name: gRPC Mock Logs
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000
