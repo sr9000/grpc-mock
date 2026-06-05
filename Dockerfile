@@ -79,8 +79,11 @@ USER appuser
 COPY --from=builder /app/bin/grpc-mock .
 
 # Default configuration
+ENV HOST=0.0.0.0
 ENV PORT=50051
-EXPOSE 50051
+ENV MGMT_PORT=9000
+ENV METRICS_PORT=9100
+EXPOSE 50051 9000 9100
 
 ENTRYPOINT ["./grpc-mock"]
 CMD ["run"]
